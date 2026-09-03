@@ -115,8 +115,17 @@
   /* ---------- экран «Сегодня» ---------- */
   function honeycomb(cats) {
     if (!cats.length) return '<div class="honey-empty">Все категории скрыты. Откройте настройки, чтобы вернуть их.</div>';
+    // Ряды чередуются 3 / 2, как в макете (8 категорий → 3/2/3).
+    // Ряд из одного кружка ломает «соты», поэтому такой шаг укорачиваем.
     const rows = []; let i = 0, n = 3;
-    while (i < cats.length) { rows.push(cats.slice(i, i + n)); i += n; n = n === 3 ? 2 : 3; }
+    while (i < cats.length) {
+      const left = cats.length - i;
+      let take = Math.min(n, left);
+      if (left - take === 1) take = left > 3 ? take - 1 : left;
+      if (take < 2 && left > 1) take = 2;
+      rows.push(cats.slice(i, i + take)); i += take;
+      n = take === 3 ? 2 : 3;
+    }
     return rows.map(r => `<div class="honey-row">${r.map(c =>
       `<button type="button" class="cat${state.cat === c.id ? ' on' : ''}" data-cat="${c.id}" title="${esc(c.name)}" aria-label="${esc(c.name)}" aria-pressed="${state.cat === c.id}">${svg(c.icon, 26, 1.6)}</button>`
     ).join('')}</div>`).join('');

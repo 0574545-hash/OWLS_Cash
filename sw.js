@@ -1,5 +1,5 @@
 /* Service worker OWLS Cash: оболочка приложения кешируется для офлайна. */
-const VERSION = 'owls-cash-v1';
+const VERSION = 'owls-cash-v2';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './css/fonts.css', './css/owls.css', './css/app.css',
@@ -14,15 +14,17 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== VERSION).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
+/* Сеть вперёд, кеш — запасной путь: онлайн всегда свежая версия,
+   офлайн открывается из кеша. Кеш обновляется на каждом успешном ответе. */
 self.addEventListener('fetch', e => {
-  if (e.request.method !== 'GET') return;
+  const req = e.request;
+  if (req.method !== 'GET') return;
+  if (new URL(req.url).origin !== self.location.origin) return;
   e.respondWith(
-    caches.match(e.request, { ignoreSearch: true }).then(hit => hit || fetch(e.request).then(res => {
-      if (res.ok && new URL(e.request.url).origin === self.location.origin) {
-        const copy = res.clone();
-        caches.open(VERSION).then(c => c.put(e.request, copy));
-      }
+    fetch(req).then(res => {
+      if (res.ok) { const copy = res.clone(); caches.open(VERSION).then(c => c.put(req, copy)); }
       return res;
-    }).catch(() => hit))
+    }).catch(() => caches.match(req, { ignoreSearch: true })
+      .then(hit => hit || (req.mode === 'navigate' ? caches.match('./index.html') : undefined)))
   );
 });
