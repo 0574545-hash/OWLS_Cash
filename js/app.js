@@ -20,7 +20,7 @@
     'book-open', 'graduation-cap', 'pill', 'baby', 'dumbbell', 'plane', 'wallet', 'credit-card',
     'paw-print', 'cat', 'dog', 'gamepad-2', 'music', 'scissors', 'wrench', 'briefcase', 'receipt', 'sparkles'
   ];
-  const RAMP = ['#0B1E35', '#F26336', '#16304E', '#6B7280', '#C9C2B1', '#2A3A52', '#FBD5C7', '#9AA1AB'];
+  const RAMP = ['#0B1E35', '#F26336', '#16304E', '#6B6152', '#C4B79E', '#2A3A52', '#FBD5C7', '#9A8F7C'];
   const TABS = ['today', 'history', 'dash'];
   const MAX_DIGITS = 7;
   const RING_C = 2 * Math.PI * 47;
@@ -234,7 +234,7 @@
       const amt = fmt(b.total);
       return `<div class="ring-item cascade-item">
         <div class="ring">
-          <svg width="104" height="104" viewBox="0 0 104 104"><circle cx="52" cy="52" r="47" fill="#fff" stroke="#E9E5DC" stroke-width="8"/><circle class="v" cx="52" cy="52" r="47" fill="none" stroke="${b.color}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${RING_C.toFixed(1)}" stroke-dashoffset="${RING_C.toFixed(1)}" data-target="${(RING_C * (1 - b.share)).toFixed(1)}"/></svg>
+          <svg width="104" height="104" viewBox="0 0 104 104"><circle cx="52" cy="52" r="47" fill="#fff" stroke="#E5DCC9" stroke-width="8"/><circle class="v" cx="52" cy="52" r="47" fill="none" stroke="${b.color}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${RING_C.toFixed(1)}" stroke-dashoffset="${RING_C.toFixed(1)}" data-target="${(RING_C * (1 - b.share)).toFixed(1)}"/></svg>
           <div class="ring-in"><span class="ring-ic">${svg(b.icon, 16, 1.6)}</span><span class="ring-n${amt.length > 7 ? ' long' : ''}">${amt}</span><span class="ring-p" data-pct="${Math.round(b.share * 100)}">0%</span></div>
         </div>
         <span class="ring-cap">${esc(b.name)}</span>
