@@ -84,11 +84,21 @@
   function defaults() {
     return {
       categories: DEFAULT_CATS.map(([name, icon], i) => ({ id: 'c' + (i + 1), name, icon, order: i, hidden: false })),
-      expenses: []
+      expenses: [],
+      backupAt: '',      // день последней копии, YYYY-MM-DD
+      edits: 0,          // правок с последней копии
+      backupSnooze: ''   // день, до которого напоминание отложено
     };
   }
-  state.data = Store.load() || defaults();
+  /* Данные из хранилища могут быть от старой версии: добавляем недостающие поля. */
+  function normalize(d) {
+    const base = defaults();
+    if (!d || !Array.isArray(d.categories) || !Array.isArray(d.expenses)) return base;
+    return Object.assign(base, d);
+  }
+  state.data = normalize(Store.load());
   const persist = () => Store.save(state.data);
+  const bumpEdits = () => { state.data.edits = (state.data.edits || 0) + 1; };
 
   /* ---------- производные значения (считаются из данных, не хранятся) ---------- */
   const catById = id => state.data.categories.find(c => c.id === id);
@@ -176,6 +186,16 @@
           <img src="assets/owls_owl.png" alt="">
         </button>
       </header>
+      ${backupDue() ? `<div class="card pad bk cascade-item">
+        <div class="bk-top">
+          <span class="bk-ic">${svg('wallet', 18, 1.7)}</span>
+          <span class="bk-t"><b>${backupDaysAgo() === null ? 'Копии данных ещё не было' : `Копии не было ${backupDaysAgo()} ${plural(backupDaysAgo(), 'день', 'дня', 'дней')}`}</b><span>Файл в iCloud Drive вернёт всё на новом телефоне.</span></span>
+        </div>
+        <div class="bk-btns">
+          <button type="button" class="btn-add" data-act="bk-save">Сохранить копию</button>
+          <button type="button" class="btn-ghost" data-act="bk-later">Позже</button>
+        </div>
+      </div>` : ''}
       <div class="sums">
         <div class="card sum cascade-item${longToday ? ' compact' : ''}" id="card-today">
           <div class="lbl">Сегодня</div>
@@ -349,6 +369,7 @@
     const commit = () => {
       saving = false;
       state.data.expenses.unshift(row);
+      bumpEdits();
       persist();
       state.amount = ''; state.cat = null; state.comment = ''; state.pad = false;
       rerender();
@@ -365,11 +386,100 @@
     const i = state.data.expenses.findIndex(e => e.id === id);
     if (i < 0) return;
     state.data.expenses.splice(i, 1);
+    bumpEdits();
     persist();
     if (rowEl && !M.reduced()) {
       rowEl.classList.add('removing');
       setTimeout(rerender, 200);
     } else rerender();
+  }
+
+  /* ---------- копия данных ----------
+     Сайт на iPhone не может сам писать в файлы, поэтому файл уходит через
+     «Поделиться», а пользователь выбирает «Сохранить в Файлы» → iCloud Drive.
+     Имя всегда одно, значит копия заменяется, а не плодит файлы. */
+  const BACKUP_NAME = 'OWLS Cash.json';
+  const BK_EVERY_DAYS = 7, BK_FIRST_EDITS = 15;
+
+  function backupDaysAgo() {
+    if (!state.data.backupAt) return null;
+    const [Y, Mo, D] = state.data.backupAt.split('-').map(Number);
+    const then = new Date(Y, Mo - 1, D), now = new Date();
+    return Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - then) / 86400000);
+  }
+  function backupDue() {
+    if (state.data.backupSnooze === dayKey(new Date())) return false;
+    const ago = backupDaysAgo();
+    if (ago === null) return (state.data.edits || 0) >= BK_FIRST_EDITS;
+    return ago >= BK_EVERY_DAYS && (state.data.edits || 0) > 0;
+  }
+  function backupLabel() {
+    const ago = backupDaysAgo();
+    if (ago === null) return 'Копии ещё не было';
+    if (ago === 0) return 'Копия сохранена сегодня';
+    if (ago === 1) return 'Копия сохранена вчера';
+    return `Копия сохранена ${ago} ${plural(ago, 'день', 'дня', 'дней')} назад`;
+  }
+
+  function backupBlob() {
+    const payload = {
+      app: 'owls-cash', version: 1, savedAt: new Date().toISOString(),
+      data: { categories: state.data.categories, expenses: state.data.expenses }
+    };
+    return new Blob([JSON.stringify(payload)], { type: 'application/json' });
+  }
+
+  /* На iPhone файл уходит через «Поделиться», иначе обычной загрузкой.
+     Возвращает false, если окно «Поделиться» закрыли. */
+  async function deliverFile(blob, name) {
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (ios && navigator.canShare) {
+      const file = new File([blob], name, { type: blob.type });
+      if (navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file], title: name }); return true; }
+        catch (_) { return false; }
+      }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    return true;
+  }
+
+  async function backupSave(btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Готовим файл…'; }
+    const ok = await deliverFile(backupBlob(), BACKUP_NAME);
+    if (ok) {
+      state.data.backupAt = dayKey(new Date());
+      state.data.edits = 0;
+      state.data.backupSnooze = '';
+      persist();
+    }
+    if (state.settings) openSettings(); else rerender();
+  }
+
+  /* Проверяем, что файл наш, и собираем сводку для подтверждения. */
+  function backupInspect(obj) {
+    if (!obj || obj.app !== 'owls-cash' || !obj.data || !Array.isArray(obj.data.expenses) || !Array.isArray(obj.data.categories)) {
+      throw new Error('Это не файл копии OWLS Cash');
+    }
+    const e = obj.data.expenses.length, c = obj.data.categories.length;
+    const sum = obj.data.expenses.reduce((s, x) => s + (Number(x.amount) || 0), 0);
+    const when = obj.savedAt ? new Date(obj.savedAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }) : 'дата неизвестна';
+    return {
+      when,
+      line: `${e} ${plural(e, 'запись', 'записи', 'записей')} на ${fmt(sum)} ₽, ${c} ${plural(c, 'категория', 'категории', 'категорий')}`
+    };
+  }
+  function backupRestore(obj) {
+    state.data = normalize({
+      categories: obj.data.categories, expenses: obj.data.expenses,
+      backupAt: dayKey(new Date()), edits: 0, backupSnooze: ''
+    });
+    state.cat = null;
+    persist();
   }
 
   /* ---------- Настройки ---------- */
@@ -391,6 +501,13 @@
           <span class="c-chev">${svg('chevron-right', 16, 1.8)}</span>
         </div>`).join('')}</div>
       <button type="button" class="add-cat pressable" data-act="new-cat">${svg('plus', 17, 1.9)}Добавить категорию</button>
+      <div class="card pad data-card">
+        <div class="sec-t">Копия данных</div>
+        <p class="hint">Файл уходит в «Файлы» → iCloud Drive: на iPhone нажмите «Сохранить в Файлы». Имя всегда одно, поэтому копия заменяется. На новом телефоне тот же файл вернёт всё обратно.</p>
+        <div class="bk-when">${backupLabel()}</div>
+        <button type="button" class="btn-add" data-act="bk-save">${svg('wallet', 16, 1.8)}Сохранить копию</button>
+        <button type="button" class="btn-ghost" data-act="bk-restore">${svg('inbox', 15, 1.8)}Восстановить из копии</button>
+      </div>
       ${state.data.expenses.length ? '' : `<button type="button" class="btn-ghost sample" data-act="sample">${svg('sparkles', 15, 1.7)}Заполнить примерами</button>`}
       <p class="set-foot">Данные хранятся только на этом устройстве.</p>
     </div>`;
@@ -402,6 +519,7 @@
     const list = overlay.querySelector('#catlist');
     M.sortable(list, { handle: '[data-grip]', row: '.crow', onChange: ids => {
       ids.forEach((id, i) => { const c = catById(id); if (c) c.order = i; });
+      bumpEdits();
       persist();
     } });
   }
@@ -446,6 +564,57 @@
     const del = sheetHost.querySelector('[data-act="delete-cat"]');
     if (del) M.hold(del, { duration: 800, onComplete: deleteCategory });
   }
+  /* Замена всех данных необратима, поэтому сначала сводка и явное подтверждение. */
+  function confirmRestore(obj, info) {
+    sheetHost.innerHTML = `<div class="sheet-wrap">
+      <div class="dim" data-act="close-confirm"></div>
+      <div class="sheet" role="dialog" aria-modal="true" aria-label="Восстановление из копии">
+        <div class="sheet-h"><span class="sec-t">Восстановить из копии</span><button type="button" class="x pressable" data-act="close-confirm" aria-label="Закрыть">${svg('x', 18, 1.8)}</button></div>
+        <p class="hint">Копия от ${esc(info.when)}: ${esc(info.line)}.</p>
+        <p class="hint"><b>Текущие записи и категории будут заменены.</b> Отменить это нельзя, поэтому сначала сохраните копию того, что есть сейчас.</p>
+        <button type="button" class="save" data-act="do-restore">Заменить данные</button>
+        <button type="button" class="btn-ghost" data-act="close-confirm">Отмена</button>
+      </div>
+    </div>`;
+    pendingRestore = obj;
+  }
+  function restoreError(msg) {
+    sheetHost.innerHTML = `<div class="sheet-wrap">
+      <div class="dim" data-act="close-confirm"></div>
+      <div class="sheet" role="dialog" aria-modal="true" aria-label="Не удалось прочитать файл">
+        <div class="sheet-h"><span class="sec-t">Файл не подошёл</span><button type="button" class="x pressable" data-act="close-confirm" aria-label="Закрыть">${svg('x', 18, 1.8)}</button></div>
+        <p class="hint">${esc(msg)}</p>
+        <button type="button" class="btn-ghost" data-act="close-confirm">Понятно</button>
+      </div>
+    </div>`;
+  }
+  let pendingRestore = null;
+  function closeConfirm() {
+    pendingRestore = null;
+    const wrap = sheetHost.querySelector('.sheet-wrap');
+    if (!wrap) return;
+    if (M.reduced()) { sheetHost.innerHTML = ''; return; }
+    wrap.classList.add('closing');
+    setTimeout(() => { sheetHost.innerHTML = ''; }, 210);
+  }
+  function pickBackupFile() {
+    const inp = document.getElementById('restore-input');
+    inp.value = '';
+    inp.click();
+  }
+  document.getElementById('restore-input').addEventListener('change', async e => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    try {
+      const obj = JSON.parse(await file.text());
+      confirmRestore(obj, backupInspect(obj));
+    } catch (err) {
+      restoreError(err && err.message === 'Это не файл копии OWLS Cash'
+        ? 'Это не файл копии OWLS Cash. Нужен файл «OWLS Cash.json», сохранённый из этого приложения.'
+        : 'Файл повреждён или это не JSON.');
+    }
+  });
+
   function closeEditor() {
     const wrap = sheetHost.querySelector('.sheet-wrap');
     state.editor = null;
@@ -464,6 +633,7 @@
       const order = state.data.categories.reduce((m, c) => Math.max(m, c.order), -1) + 1;
       state.data.categories.push({ id: Store.uid(), name, icon: ed.icon, order, hidden: false });
     }
+    bumpEdits();
     persist();
     closeEditor();
     openSettings();
@@ -474,6 +644,7 @@
     state.data.categories = state.data.categories.filter(c => c.id !== ed.id);
     orderedCats().forEach((c, i) => { c.order = i; });
     if (state.cat === ed.id) state.cat = null;
+    bumpEdits();
     persist();
     closeEditor();
     openSettings();
@@ -506,6 +677,8 @@
       case 'focus': if (!state.pad) { state.pad = true; state.padAnim = true; const a = document.activeElement; if (a && a.blur) a.blur(); rerender(); } break;
       case 'done': state.pad = false; rerender(); break;
       case 'save': saveExpense(act); break;
+      case 'bk-save': backupSave(act); break;
+      case 'bk-later': state.data.backupSnooze = dayKey(new Date()); persist(); rerender(); break;
     }
   });
   screens.addEventListener('keydown', e => {
@@ -522,6 +695,8 @@
       case 'edit-cat': openEditor(act.dataset.id); break;
       case 'new-cat': openEditor(null); break;
       case 'sample': loadSample(); break;
+      case 'bk-save': backupSave(act); break;
+      case 'bk-restore': pickBackupFile(); break;
     }
   });
   sheetHost.addEventListener('click', e => {
@@ -536,11 +711,14 @@
       case 'close-editor': closeEditor(); break;
       case 'save-cat': saveCategory(); break;
       case 'toggle-hidden': state.editor.hidden = !state.editor.hidden; act.setAttribute('aria-checked', String(state.editor.hidden)); act.querySelector('.switch').classList.toggle('on', state.editor.hidden); break;
+      case 'close-confirm': closeConfirm(); break;
+      case 'do-restore': { const obj = pendingRestore; closeConfirm(); if (obj) { backupRestore(obj); closeSettings(); } break; }
     }
   });
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
-    if (state.editor) closeEditor(); else if (state.settings) closeSettings();
+    if (sheetHost.querySelector('.sheet-wrap')) { if (state.editor) closeEditor(); else closeConfirm(); }
+    else if (state.settings) closeSettings();
   });
 
   /* Свайп между вкладками. */

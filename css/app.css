@@ -210,3 +210,17 @@
 @keyframes s-owl{0%{opacity:0;transform:scale(.7)}60%{opacity:1;transform:scale(1.06)}100%{opacity:1;transform:scale(1)}}
 @keyframes s-wm{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){#splash .s-ph1{display:none}#splash .s-ph2,#splash .s-owl,#splash .s-wm{opacity:1!important}}
+
+/* ---------- копия данных ---------- */
+.bk{display:flex;flex-direction:column;gap:12px}
+.bk-top{display:flex;gap:12px;align-items:flex-start}
+.bk-ic{width:34px;height:34px;border-radius:var(--r-tile);background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;justify-content:center;flex:none}
+.bk-t{display:flex;flex-direction:column;gap:3px;min-width:0}
+.bk-t b{font:700 13.5px var(--body);color:var(--ink)}
+.bk-t>span{font:500 12px var(--body);color:var(--muted);line-height:1.45}
+.bk-btns{display:flex;gap:8px}
+.bk-btns .btn-add{height:44px;font-size:13.5px}
+.bk-btns .btn-ghost{flex:none;padding:0 16px}
+.data-card{display:flex;flex-direction:column;gap:10px}
+.data-card .btn-add:disabled{opacity:.6;pointer-events:none}
+.bk-when{font:600 12px var(--body);color:var(--faint);padding-bottom:2px}
