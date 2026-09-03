@@ -1,5 +1,5 @@
 /* Service worker OWLS Cash: оболочка приложения кешируется для офлайна. */
-const VERSION = 'owls-cash-v6';
+const VERSION = 'owls-cash-v7';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './css/fonts.css', './css/owls.css', './css/app.css',

@@ -20,6 +20,18 @@
     'book-open', 'graduation-cap', 'pill', 'baby', 'dumbbell', 'plane', 'wallet', 'credit-card',
     'paw-print', 'cat', 'dog', 'gamepad-2', 'music', 'scissors', 'wrench', 'briefcase', 'receipt', 'sparkles'
   ];
+  /* Установки про деньги: на заставке показывается одна случайная. */
+  const QUOTES = [
+    'Деньги — не главное, но много не бывает',
+    'Деньги — хороший слуга, но плохой хозяин',
+    'Cash is king',
+    'Богатый не тот, у кого много, а тот, кому хватает',
+    'Копейка рубль бережёт',
+    'Деньги любят тишину',
+    'Скупой платит дважды',
+    'Деньги к деньгам идут'
+  ];
+
   const RAMP = ['#0B1E35', '#F26336', '#16304E', '#6B6152', '#C4B79E', '#2A3A52', '#FBD5C7', '#9A8F7C'];
   const TABS = ['today', 'history', 'dash'];
   const MAX_DIGITS = 7;
@@ -543,7 +555,33 @@
   setInterval(() => { const k = dayKey(new Date()); if (k !== lastDay) { lastDay = k; if (!state.settings) rerender(); } }, 60000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { const k = dayKey(new Date()); if (k !== lastDay) { lastDay = k; if (!state.settings) rerender(); } } });
 
+  /* ---------- заставка ----------
+     Одна случайная установка, следом сова и название. Экран убирается
+     по таймеру, тапом или при возврате в приложение. */
+  function splash() {
+    const el = document.getElementById('splash');
+    if (!el) return;
+    const text = QUOTES[Math.floor(Math.random() * QUOTES.length)];
+    document.getElementById('splash-line').innerHTML = `<span class="s-ln">«${esc(text)}»</span>`;
+    el.hidden = false;
+    el.classList.add('play');
+    const total = M.reduced() ? 1400 : 3000;
+    let gone = false;
+    const hide = () => {
+      if (gone) return;
+      gone = true;
+      el.classList.add('hide');
+      setTimeout(() => el.remove(), 450);
+    };
+    const timer = setTimeout(hide, total);
+    el.addEventListener('click', () => { clearTimeout(timer); hide(); }, { once: true });
+    /* Если таймер проспал (телефон ушёл в сон), убираем при первом возврате. */
+    setTimeout(() => { if (el.isConnected) el.remove(); }, total + 2500);
+    document.addEventListener('visibilitychange', () => { if (el.isConnected) el.remove(); }, { once: true });
+  }
+
   /* Старт. */
+  splash();
   show(state.tab, 0);
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
