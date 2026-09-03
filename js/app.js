@@ -112,20 +112,31 @@
     };
   }
 
+  /* Размеры рядов «сот»: не больше трёх в ряду, ряды выложены зеркально,
+     чтобы фигура читалась как соты, а не как лесенка.
+     8 категорий дают 3/2/3, как в макете; 7 → 2/3/2; 9 → 3/3/3. */
+  function honeyRows(n) {
+    if (n <= 3) return [n];
+    const r = Math.ceil(n / 3);
+    const base = Math.floor(n / r), extra = n % r;
+    const desc = Array.from({ length: r }, (_, k) => (k < extra ? base + 1 : base));
+    const mirror = sizes => {
+      const out = new Array(r);
+      let lo = 0, hi = r - 1, k = 0;
+      while (lo <= hi) { out[lo++] = sizes[k++]; if (lo <= hi) out[hi--] = sizes[k++]; }
+      return out;
+    };
+    const a = mirror(desc), b = mirror(desc.slice().reverse());
+    const isMirror = v => v.every((x, k) => x === v[r - 1 - k]);
+    return isMirror(a) ? a : (isMirror(b) ? b : a);
+  }
+
   /* ---------- экран «Сегодня» ---------- */
   function honeycomb(cats) {
     if (!cats.length) return '<div class="honey-empty">Все категории скрыты. Откройте настройки, чтобы вернуть их.</div>';
-    // Ряды чередуются 3 / 2, как в макете (8 категорий → 3/2/3).
-    // Ряд из одного кружка ломает «соты», поэтому такой шаг укорачиваем.
-    const rows = []; let i = 0, n = 3;
-    while (i < cats.length) {
-      const left = cats.length - i;
-      let take = Math.min(n, left);
-      if (left - take === 1) take = left > 3 ? take - 1 : left;
-      if (take < 2 && left > 1) take = 2;
-      rows.push(cats.slice(i, i + take)); i += take;
-      n = take === 3 ? 2 : 3;
-    }
+    const rows = [];
+    let i = 0;
+    for (const size of honeyRows(cats.length)) { rows.push(cats.slice(i, i + size)); i += size; }
     return rows.map(r => `<div class="honey-row">${r.map(c =>
       `<button type="button" class="cat${state.cat === c.id ? ' on' : ''}" data-cat="${c.id}" title="${esc(c.name)}" aria-label="${esc(c.name)}" aria-pressed="${state.cat === c.id}">${svg(c.icon, 26, 1.6)}</button>`
     ).join('')}</div>`).join('');
