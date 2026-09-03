@@ -75,9 +75,11 @@ input,textarea{font-family:var(--body);color:var(--ink)}
 input::placeholder{color:var(--faint)}
 svg{display:block;flex:none}
 
-/* ---------- отклик на нажатие: сжатие до .96 ---------- */
+/* ---------- отклик на нажатие ----------
+   Сжатие быстрое (60ms), возврат мягкий (--t-press), чтобы палец
+   чувствовал момент нажатия, а не плавное «уползание». */
 .pressable{transition:transform var(--t-press) var(--ease-out),background-color var(--t-base),color var(--t-base),box-shadow var(--t-base),border-color var(--t-base)}
-.pressable:active{transform:scale(.96)}
+.pressable:active{transform:scale(.92);transition-duration:60ms}
 
 /* ---------- типографика ---------- */
 .eyebrow{font-family:var(--display);font-weight:400;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
@@ -96,16 +98,16 @@ svg{display:block;flex:none}
 /* строка списка: 6 сверху и снизу, 16 по бокам, высота от 52 */
 .item{display:flex;align-items:center;gap:var(--s5);padding:6px 16px;min-height:52px;width:100%;border-top:1px solid var(--line-soft);transition:transform var(--t-press) var(--ease-out),background-color .15s}
 .item:first-child{border-top:0}
-.item:active{transform:scale(.985);background:var(--line-soft)}
+.item:active{transform:scale(.97);background:var(--line-soft);transition-duration:60ms}
 
 /* ---------- кнопки ---------- */
 .btn-add{height:48px;width:100%;border-radius:var(--r-btn);background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;font-weight:700;transition:transform var(--t-press) var(--ease-out),background-color .15s}
-.btn-add:active{background:var(--accent-dark);transform:scale(.96)}
+.btn-add:active{background:var(--accent-dark);transform:scale(.93);transition-duration:60ms}
 .save{height:48px;width:100%;border-radius:var(--r-btn);background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;font-weight:700;transition:transform var(--t-press) var(--ease-out),opacity .15s}
-.save:active{opacity:.85;transform:scale(.96)}
+.save:active{opacity:.85;transform:scale(.93);transition-duration:60ms}
 .save[aria-disabled="true"]{opacity:.4;pointer-events:none}
 .btn-ghost{height:44px;padding:0 14px;border-radius:var(--r-btn);border:1px solid var(--line-input);background:#fff;font-size:13px;font-weight:600;color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:transform var(--t-press) var(--ease-out),background-color .15s}
-.btn-ghost:active{background:var(--line-soft);transform:scale(.96)}
+.btn-ghost:active{background:var(--line-soft);transform:scale(.93);transition-duration:60ms}
 .icon-btn{width:38px;height:38px;border-radius:var(--r-btn);background:#fff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--ink);position:relative;flex:none}
 .icon-btn::before{content:'';position:absolute;inset:-4px} /* зона касания не меньше 44 */
 
@@ -118,7 +120,7 @@ svg{display:block;flex:none}
 /* ---------- чипы, пилюли, теги ---------- */
 .chip{display:flex;align-items:center;gap:8px;min-height:44px;padding:8px 12px;border:1px solid var(--line-input);border-radius:var(--r-chip);background:var(--bg);font-size:13px;font-weight:500;color:var(--ink-2);transition:transform var(--t-press) var(--ease-out),background-color var(--t-base),border-color var(--t-base);user-select:none}
 .chip.on{border-color:var(--accent);background:var(--accent-soft);font-weight:600;color:var(--ink)}
-.chip:active{transform:scale(.97)}
+.chip:active{transform:scale(.94);transition-duration:60ms}
 .pill{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border-radius:var(--r-pill);padding:6px 11px;flex:none}
 .pill.ok{color:var(--ok);background:var(--ok-bg)}
 .pill.bad{color:var(--bad);background:var(--bad-bg)}

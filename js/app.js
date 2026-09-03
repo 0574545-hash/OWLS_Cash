@@ -312,16 +312,30 @@
     patchForm(el);
   }
 
-  function saveExpense() {
+  /* Внесение расхода. Кнопка сначала показывает галочку (300ms),
+     потом запись уходит в список и форма очищается. */
+  const SAVE_DELAY = 300;
+  let saving = false;
+
+  function saveExpense(btn) {
+    if (saving) return;
     const amount = parseInt(state.amount || '0', 10);
     const cat = state.cat && catById(state.cat);
     if (!(amount > 0) || !cat) return;
-    const now = new Date();
-    state.data.expenses.unshift({ id: Store.uid(), ts: localISO(now), amount, catId: cat.id, name: state.comment.trim() || cat.name });
-    persist();
-    state.amount = ''; state.cat = null; state.comment = ''; state.pad = false;
-    rerender();
-    M.once(document.getElementById('card-today'), 'nudge');
+    const row = { id: Store.uid(), ts: localISO(new Date()), amount, catId: cat.id, name: state.comment.trim() || cat.name };
+    const commit = () => {
+      saving = false;
+      state.data.expenses.unshift(row);
+      persist();
+      state.amount = ''; state.cat = null; state.comment = ''; state.pad = false;
+      rerender();
+      M.once(document.getElementById('card-today'), 'nudge');
+    };
+    if (!btn || M.reduced()) { commit(); return; }
+    saving = true;
+    btn.classList.add('saving');
+    btn.innerHTML = `${svg('check', 20, 2.4)}Внесено`;
+    setTimeout(commit, SAVE_DELAY);
   }
 
   function removeExpense(id, rowEl) {
@@ -468,7 +482,7 @@
       case 'settings': openSettings(); break;
       case 'focus': if (!state.pad) { state.pad = true; state.padAnim = true; const a = document.activeElement; if (a && a.blur) a.blur(); rerender(); } break;
       case 'done': state.pad = false; rerender(); break;
-      case 'save': saveExpense(); break;
+      case 'save': saveExpense(act); break;
     }
   });
   screens.addEventListener('keydown', e => {
