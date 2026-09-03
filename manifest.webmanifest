@@ -1,0 +1,16 @@
+{
+  "name": "OWLS Cash",
+  "short_name": "OWLS Cash",
+  "description": "Учёт личных расходов: сегодня, история, дашборд.",
+  "lang": "ru",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F6F4EF",
+  "theme_color": "#F6F4EF",
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

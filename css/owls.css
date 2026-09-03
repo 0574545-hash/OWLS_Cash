@@ -1,0 +1,173 @@
+/* ============================================================
+   owls.css — стандарты OWLS (токены, база, общие компоненты).
+   Источник: «Стандарты OWLS» + owls-design-system/colors_and_type.css.
+   Переносится в новое приложение копированием, без правок.
+   ============================================================ */
+
+:root{
+  /* Поверхности */
+  --bg:#F6F4EF;          /* Paper — фон экрана */
+  --ground:#ECE9E1;      /* подложка вокруг телефона на десктопе */
+  --card:#FFFFFF;        /* карточка */
+  --line:#E1DCD0;        /* граница карточки, шапки, меню */
+  --line-soft:#EFECE3;   /* разделитель строк внутри карточки */
+  --line-input:#E9E5DC;  /* Stone — подложка, граница поля */
+  --stone:#E9E5DC;
+  --sand:#C9C2B1;        /* шевроны, плейсхолдер, пунктир */
+
+  /* Текст */
+  --ink:#0B1E35;         /* основной */
+  --ink-2:#2A3A52;       /* подписи полей */
+  --muted:#6B7280;       /* пояснение */
+  --faint:#9AA1AB;       /* тусклый: время, сделанное */
+
+  /* Акцент и состояния. Оранжевый = действие или прогресс, больше ничего. */
+  --accent:#F26336;
+  --accent-soft:#FEEFEA;
+  --accent-dark:#D94B1F;
+  --accent-100:#FBD5C7;
+  --navy-700:#16304E;
+  --ok:#1E7A3C; --ok-bg:#DCF5E4;
+  --bad:#B43232; --bad-bg:#FBD9D9;
+
+  /* Шрифты: Unbounded только заголовки, числа и надзаголовки; Manrope — всё остальное. */
+  --display:'Unbounded',system-ui,sans-serif;
+  --body:'Manrope',system-ui,-apple-system,sans-serif;
+  --mono:ui-monospace,Menlo,'SF Mono',monospace;
+
+  /* Отступы, шкала 4…28 */
+  --s1:4px; --s2:6px; --s3:8px; --s4:10px; --s5:12px; --s6:14px;
+  --s7:16px; --s8:18px; --s9:20px; --s10:24px; --s11:28px;
+
+  /* Радиусы */
+  --r-card:14px; --r-big:12px; --r-key:11px; --r-btn:10px; --r-tile:9px; --r-chip:8px; --r-box:7px; --r-pill:999px;
+
+  /* Тени: карточки без тени в покое */
+  --shadow-hover:0 2px 8px rgba(11,30,53,.06);
+  --shadow-accent:0 6px 18px rgba(242,99,54,.28);
+  --shadow-chip:0 6px 16px rgba(242,99,54,.3);
+  --shadow-focus:0 0 0 3px rgba(242,99,54,.18);
+  --shadow-sheet:0 -8px 32px rgba(11,30,53,.12);
+
+  /* Движение */
+  --t-press:.12s;   /* сжатие под пальцем */
+  --t-base:.2s;     /* смена состояния, появление */
+  --t-screen:.26s;  /* переход экрана */
+  --t-ring:.55s;    /* заполнение кольца */
+  --ease-out:cubic-bezier(.2,.7,.2,1);
+  --ease-in-out:cubic-bezier(.65,0,.35,1);
+
+  /* Безопасные зоны телефона */
+  --safe-top:env(safe-area-inset-top,0px);
+  --safe-bottom:env(safe-area-inset-bottom,0px);
+}
+
+/* ---------- база ---------- */
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{color-scheme:light;-webkit-text-size-adjust:100%}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+h1,h2,h3{margin:0;font-family:var(--display);font-weight:800;letter-spacing:-.02em;line-height:1.05}
+p{margin:0}
+img{max-width:100%;display:block}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;text-align:left;-webkit-appearance:none;appearance:none}
+button:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input,textarea{font-family:var(--body);color:var(--ink)}
+input::placeholder{color:var(--faint)}
+svg{display:block;flex:none}
+
+/* ---------- отклик на нажатие: сжатие до .96 ---------- */
+.pressable{transition:transform var(--t-press) var(--ease-out),background-color var(--t-base),color var(--t-base),box-shadow var(--t-base),border-color var(--t-base)}
+.pressable:active{transform:scale(.96)}
+
+/* ---------- типографика ---------- */
+.eyebrow{font-family:var(--display);font-weight:400;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.h1{font-family:var(--display);font-weight:800;font-size:24px;letter-spacing:-.03em;line-height:1.05;color:var(--ink)}
+.sec-t{font-family:var(--display);font-weight:700;font-size:13.5px;color:var(--ink)}
+.hint{font-size:12px;color:var(--muted);line-height:1.45}
+.small{font-size:11.5px;color:var(--faint)}
+.lbl{font:600 10.5px var(--body);color:var(--muted);text-transform:uppercase;letter-spacing:.09em}
+
+/* ---------- контейнеры ---------- */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);transition:box-shadow var(--t-base)}
+@media (hover:hover){.card:hover{box-shadow:var(--shadow-hover)}}
+.card.flush{overflow:hidden}
+.card.pad{padding:16px 18px}
+
+/* строка списка: 6 сверху и снизу, 16 по бокам, высота от 52 */
+.item{display:flex;align-items:center;gap:var(--s5);padding:6px 16px;min-height:52px;width:100%;border-top:1px solid var(--line-soft);transition:transform var(--t-press) var(--ease-out),background-color .15s}
+.item:first-child{border-top:0}
+.item:active{transform:scale(.985);background:var(--line-soft)}
+
+/* ---------- кнопки ---------- */
+.btn-add{height:48px;width:100%;border-radius:var(--r-btn);background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;font-weight:700;transition:transform var(--t-press) var(--ease-out),background-color .15s}
+.btn-add:active{background:var(--accent-dark);transform:scale(.96)}
+.save{height:48px;width:100%;border-radius:var(--r-btn);background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;font-weight:700;transition:transform var(--t-press) var(--ease-out),opacity .15s}
+.save:active{opacity:.85;transform:scale(.96)}
+.save[aria-disabled="true"]{opacity:.4;pointer-events:none}
+.btn-ghost{height:44px;padding:0 14px;border-radius:var(--r-btn);border:1px solid var(--line-input);background:#fff;font-size:13px;font-weight:600;color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:transform var(--t-press) var(--ease-out),background-color .15s}
+.btn-ghost:active{background:var(--line-soft);transform:scale(.96)}
+.icon-btn{width:38px;height:38px;border-radius:var(--r-btn);background:#fff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--ink);position:relative;flex:none}
+.icon-btn::before{content:'';position:absolute;inset:-4px} /* зона касания не меньше 44 */
+
+/* ---------- поля: шрифт не меньше 16, иначе iPhone увеличит страницу ---------- */
+.f{display:flex;flex-direction:column;gap:6px}
+.f>label{font-size:11.5px;font-weight:700;color:var(--ink-2)}
+.f input,.input{width:100%;height:46px;padding:0 var(--s5);font:500 16px var(--body);border:1px solid var(--line-input);border-radius:var(--r-btn);background:var(--bg);color:var(--ink);outline:none;transition:border-color var(--t-base),box-shadow var(--t-base),background-color var(--t-base)}
+.f input:focus,.input:focus{border-color:var(--accent);box-shadow:var(--shadow-focus);background:#fff}
+
+/* ---------- чипы, пилюли, теги ---------- */
+.chip{display:flex;align-items:center;gap:8px;min-height:44px;padding:8px 12px;border:1px solid var(--line-input);border-radius:var(--r-chip);background:var(--bg);font-size:13px;font-weight:500;color:var(--ink-2);transition:transform var(--t-press) var(--ease-out),background-color var(--t-base),border-color var(--t-base);user-select:none}
+.chip.on{border-color:var(--accent);background:var(--accent-soft);font-weight:600;color:var(--ink)}
+.chip:active{transform:scale(.97)}
+.pill{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border-radius:var(--r-pill);padding:6px 11px;flex:none}
+.pill.ok{color:var(--ok);background:var(--ok-bg)}
+.pill.bad{color:var(--bad);background:var(--bad-bg)}
+.tag{font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-2);background:var(--bg);border:1px solid var(--line-input);border-radius:6px;padding:3px 8px}
+
+/* ---------- переключатель ---------- */
+.switch{width:44px;height:26px;border-radius:var(--r-pill);background:var(--sand);position:relative;flex:none;transition:background-color var(--t-base)}
+.switch i{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(11,30,53,.2);transition:transform var(--t-base) var(--ease-out)}
+.switch.on{background:var(--accent)}
+.switch.on i{transform:translateX(18px)}
+
+/* ---------- тёмная плашка для итога ---------- */
+.slab{background:var(--ink);border-radius:var(--r-card);padding:16px 18px;color:#fff}
+
+/* ---------- полоса прогресса ---------- */
+.bar{height:4px;border-radius:var(--r-pill);background:var(--line-soft);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:var(--r-pill);transition:width .35s var(--ease-out)}
+
+/* ---------- удаление только удержанием с видимой полосой ---------- */
+.hold{position:relative;-webkit-touch-callout:none;user-select:none;touch-action:pan-y}
+.hold .hold-bar{position:absolute;left:0;bottom:0;height:3px;width:0%;background:var(--accent);border-radius:0 2px 2px 0;transition:width .15s var(--ease-out);pointer-events:none}
+.hold.holding .hold-bar{width:100%;transition:width var(--hold-dur,.65s) linear}
+.hold.holding{background:var(--accent-soft)}
+
+/* ---------- каскад и появление ---------- */
+.rise{animation:rise .38s var(--ease-out) both}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.appear{animation:appear var(--t-base) var(--ease-out) both}
+@keyframes appear{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.nudge{animation:nudge .5s cubic-bezier(.2,.9,.3,1.3)}
+@keyframes nudge{0%{transform:scale(1)}35%{transform:scale(1.04)}100%{transform:scale(1)}}
+.pop{animation:pop .45s cubic-bezier(.2,.9,.3,1.5)}
+@keyframes pop{0%{transform:scale(.6)}55%{transform:scale(1.16)}100%{transform:scale(1)}}
+
+/* ---------- переход между экранами: новый приходит со стороны нажатой вкладки ---------- */
+.screens{position:relative;touch-action:pan-y}
+.screen{will-change:transform,opacity}
+.screen.enter-r{opacity:0;transform:translateX(28px)}
+.screen.enter-l{opacity:0;transform:translateX(-28px)}
+.screen.moving{transition:transform var(--t-screen) var(--ease-out),opacity var(--t-screen) var(--ease-out)}
+.screen.leave{position:absolute;left:0;right:0;top:0;pointer-events:none}
+.screen.leave-l{opacity:0;transform:translateX(-28px)}
+.screen.leave-r{opacity:0;transform:translateX(28px)}
+.screen.dragging{transition:none}
+
+/* ---------- кольцо прогресса ---------- */
+.ring circle.v{transition:stroke-dashoffset var(--t-ring) cubic-bezier(.4,0,.2,1)}
+
+/* ---------- всё отключается системной настройкой «Уменьшить движение» ---------- */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{transition:none!important;animation:none!important}
+}
