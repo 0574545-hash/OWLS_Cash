@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>UILaunchScreen</key>
+  <dict>
+    <key>UIColorName</key>
+    <string>LaunchBackground</string>
+  </dict>
+  <key>UIAppFonts</key>
+  <array>
+    <string>Manrope-Medium.ttf</string>
+    <string>Manrope-SemiBold.ttf</string>
+    <string>Manrope-Bold.ttf</string>
+    <string>Unbounded-Regular.ttf</string>
+    <string>Unbounded-ExtraBold.ttf</string>
+  </array>
+  <key>UISupportedInterfaceOrientations</key>
+  <array>
+    <string>UIInterfaceOrientationPortrait</string>
+  </array>
+  <key>UIUserInterfaceStyle</key>
+  <string>Light</string>
+</dict>
+</plist>

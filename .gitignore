@@ -1,3 +1,9 @@
 .DS_Store
 Thumbs.db
 *.log
+
+# Xcode
+ios/**/xcuserdata/
+ios/**/*.xcworkspace/xcuserdata/
+ios/build/
+DerivedData/
