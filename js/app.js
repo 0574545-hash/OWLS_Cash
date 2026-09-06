@@ -493,13 +493,16 @@
         <h1 class="h1 h1-sm">Настройки</h1>
       </header>
       <p class="set-hint">Категории можно переименовать, скрыть или добавить свою. Порядок здесь задаёт порядок в списке при вводе.</p>
-      <div class="card flush" id="catlist">${cats.map(c => `<div class="crow${c.hidden ? ' is-hidden' : ''}" data-id="${c.id}">
+      <div class="card flush" id="catlist">${cats.map(c => {
+        const used = state.data.expenses.filter(e => e.catId === c.id).length;
+        return `<div class="crow${c.hidden ? ' is-hidden' : ''}" data-id="${c.id}">
           <span class="grip" data-grip aria-label="Перетащить">${svg('grip-vertical', 16, 1.8)}</span>
           <span class="c-ic">${svg(c.icon, 18, 1.6)}</span>
           <button type="button" class="c-main" data-act="edit-cat" data-id="${c.id}"><span class="c-n">${esc(c.name)}</span>${c.hidden ? '<span class="c-hid">скрыта</span>' : ''}</button>
-          <span class="c-sum">${fmt(d.totals[c.id] || 0)} ₽</span>
-          <span class="c-chev">${svg('chevron-right', 16, 1.8)}</span>
-        </div>`).join('')}</div>
+          <button type="button" class="c-act" data-act="edit-cat" data-id="${c.id}" aria-label="Изменить категорию ${esc(c.name)}">${svg('square-pen', 17, 1.7)}</button>
+          <button type="button" class="c-act del${used ? ' locked' : ' hold'}" data-act="del-cat" data-id="${c.id}" data-used="${used}" aria-label="Удалить категорию ${esc(c.name)}">${svg('trash-2', 16, 1.7)}${used ? '' : '<i class="hold-bar"></i>'}</button>
+        </div>`;
+      }).join('')}</div>
       <button type="button" class="add-cat pressable" data-act="new-cat">${svg('plus', 17, 1.9)}Добавить категорию</button>
       <div class="card pad data-card">
         <div class="sec-t">Копия данных</div>
@@ -517,6 +520,10 @@
     state.settings = true;
     overlay.innerHTML = renderSettings();
     const list = overlay.querySelector('#catlist');
+    list.querySelectorAll('.del.hold').forEach(b => M.hold(b, {
+      duration: 800,
+      onComplete: () => { deleteCategoryById(b.dataset.id); }
+    }));
     M.sortable(list, { handle: '[data-grip]', row: '.crow', onChange: ids => {
       ids.forEach((id, i) => { const c = catById(id); if (c) c.order = i; });
       bumpEdits();
@@ -578,11 +585,11 @@
     </div>`;
     pendingRestore = obj;
   }
-  function restoreError(msg) {
+  function restoreError(msg, title = 'Файл не подошёл') {
     sheetHost.innerHTML = `<div class="sheet-wrap">
       <div class="dim" data-act="close-confirm"></div>
-      <div class="sheet" role="dialog" aria-modal="true" aria-label="Не удалось прочитать файл">
-        <div class="sheet-h"><span class="sec-t">Файл не подошёл</span><button type="button" class="x pressable" data-act="close-confirm" aria-label="Закрыть">${svg('x', 18, 1.8)}</button></div>
+      <div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+        <div class="sheet-h"><span class="sec-t">${esc(title)}</span><button type="button" class="x pressable" data-act="close-confirm" aria-label="Закрыть">${svg('x', 18, 1.8)}</button></div>
         <p class="hint">${esc(msg)}</p>
         <button type="button" class="btn-ghost" data-act="close-confirm">Понятно</button>
       </div>
@@ -638,6 +645,18 @@
     closeEditor();
     openSettings();
   }
+  /* Удаление прямо из списка: только для категорий без записей. */
+  function deleteCategoryById(id) {
+    const c = catById(id);
+    if (!c || state.data.expenses.some(e => e.catId === id)) return;
+    state.data.categories = state.data.categories.filter(x => x.id !== id);
+    orderedCats().forEach((x, i) => { x.order = i; });
+    if (state.cat === id) state.cat = null;
+    bumpEdits();
+    persist();
+    openSettings();
+  }
+
   function deleteCategory() {
     const ed = state.editor; if (!ed || !ed.id) return;
     if (state.data.expenses.some(e => e.catId === ed.id)) return;
@@ -697,6 +716,14 @@
       case 'sample': loadSample(); break;
       case 'bk-save': backupSave(act); break;
       case 'bk-restore': pickBackupFile(); break;
+      case 'del-cat': {
+        const used = +act.dataset.used;
+        if (used) {
+          const c = catById(act.dataset.id);
+          restoreError(`В категории «${c ? c.name : ''}» ${used} ${plural(used, 'запись', 'записи', 'записей')}. Её можно скрыть при вводе, но не удалить, иначе записи останутся без категории.`, 'Удалить нельзя');
+        }
+        break;
+      }
     }
   });
   sheetHost.addEventListener('click', e => {
