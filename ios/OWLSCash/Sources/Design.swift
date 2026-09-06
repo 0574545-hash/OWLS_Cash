@@ -3,6 +3,7 @@
 //  Значения те же, что в css/owls.css веб-версии.
 
 import SwiftUI
+import UIKit
 
 enum OW {
 
@@ -125,6 +126,20 @@ struct PressStyle: ButtonStyle {
             .scaleEffect(configuration.isPressed ? scale : 1)
             .animation(configuration.isPressed ? .easeOut(duration: 0.06) : OW.press,
                        value: configuration.isPressed)
+    }
+}
+
+/// Знак совы лежит обычным файлом в бандле: сборщик каталогов ресурсов
+/// на этой машине зависает, поэтому каталог из проекта временно убран.
+struct OwlMark: View {
+    var size: CGFloat
+    var body: some View {
+        if let path = Bundle.main.path(forResource: "owl", ofType: "png"),
+           let img = UIImage(contentsOfFile: path) {
+            Image(uiImage: img).resizable().scaledToFit().frame(width: size, height: size)
+        } else {
+            Color.clear.frame(width: size, height: size)
+        }
     }
 }
 

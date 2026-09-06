@@ -73,10 +73,7 @@ struct TodayView: View {
                             .font(OW.body(11))
                             .foregroundStyle(OW.muted)
                     }
-                    Image("OwlMark")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 30, height: 30)
+                    OwlMark(size: 30)
                 }
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())

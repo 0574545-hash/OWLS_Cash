@@ -3,10 +3,7 @@
 <plist version="1.0">
 <dict>
   <key>UILaunchScreen</key>
-  <dict>
-    <key>UIColorName</key>
-    <string>LaunchBackground</string>
-  </dict>
+  <dict/>
   <key>UIAppFonts</key>
   <array>
     <string>Manrope-Medium.ttf</string>

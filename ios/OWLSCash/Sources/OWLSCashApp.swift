@@ -64,10 +64,7 @@ struct SplashView: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             } else {
                 VStack(spacing: 18) {
-                    Image("OwlMark")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 78, height: 78)
+                    OwlMark(size: 78)
                         .frame(width: 116, height: 116)
                         .background(OW.bg)
                         .clipShape(Circle())
