@@ -136,6 +136,9 @@
 
 /* ---------- Настройки (оверлей) ---------- */
 .overlay{position:fixed;inset:0;margin:0 auto;max-width:480px;background:var(--bg);z-index:50;overflow:auto;-webkit-overflow-scrolling:touch;padding:var(--screen-top) 20px calc(var(--safe-bottom) + 40px);display:flex;flex-direction:column;gap:16px}
+/* Флекс по умолчанию сжимает содержимое под высоту экрана: список категорий
+   ужимался и обрезался, а прокручивать было нечего. Запрещаем сжатие. */
+.overlay>*{flex:none}
 @media (min-width:560px){.overlay{border-left:1px solid var(--line);border-right:1px solid var(--line)}}
 .set-h{display:flex;align-items:center;gap:12px}
 .back{width:36px;height:36px;border-radius:var(--r-btn);background:#fff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--ink);position:relative;flex:none}
@@ -164,6 +167,7 @@
 .dim{position:absolute;inset:0;background:rgba(11,30,53,.32);animation:fade var(--t-base) both}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 .sheet{position:relative;width:100%;max-width:480px;background:#fff;border-radius:20px 20px 0 0;box-shadow:var(--shadow-sheet);padding:16px 20px calc(var(--safe-bottom) + 20px);display:flex;flex-direction:column;gap:14px;max-height:calc(100dvh - 40px);overflow:auto;animation:slide-up var(--t-base) var(--ease-out) both}
+.sheet>*{flex:none}
 @keyframes slide-up{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
 .sheet-wrap.closing .dim{animation:fade var(--t-base) reverse both}
 .sheet-wrap.closing .sheet{animation:slide-up var(--t-base) var(--ease-out) reverse both}
