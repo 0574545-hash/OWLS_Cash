@@ -297,6 +297,16 @@
     return out;
   }
 
+  /* Кнопка «Внести расход»: нажатие или свайп ручки вправо. Ручка и заливка
+     лежат поверх кнопки и её габаритов не меняют. */
+  function commitBtn(can, act, iconSize) {
+    return `<button type="button" class="commit${can ? ' on' : ''}" data-act="${act}" aria-disabled="${!can}">
+          <i class="slide-fill" aria-hidden="true"></i>
+          <span class="commit-t slide-label">${svg('plus', iconSize, 2.3)}Внести расход</span>
+          <i class="slide-thumb" aria-hidden="true">${svg('chevron-right', 20, 2.4)}</i>
+        </button>`;
+  }
+
   /* ---------- голосовой ввод ---------- */
   /* Распознаёт сам телефон: служба распознавания на сервере ИИ пускает только
      свои адреса, а у посредника в облаке адрес плавающий. На iPhone за этим
@@ -640,7 +650,7 @@
           <label class="lbl" for="exp-name">Наименование</label>
           <input id="exp-name" class="input name-input" type="text" value="${esc(state.comment)}" placeholder="например, кофе с собой" autocomplete="off" autocapitalize="sentences" enterkeyhint="done" maxlength="60">
         </div>
-        <button type="button" class="commit${can ? ' on' : ''}" data-act="save" aria-disabled="${!can}">${svg('plus', 19, 2.2)}Внести расход</button>
+        ${commitBtn(can, 'save', 19)}
       </div>`}
     </section>`;
   }
@@ -678,7 +688,7 @@
           <div class="p-name">${empty ? 'наименование' : esc(r.name || catLabel)}</div>
           <i class="p-wait"></i>
         </div>
-        <button type="button" class="commit${can ? ' on' : ''}" data-act="save-smart" aria-disabled="${!can}">${svg('plus', 20, 2.3)}Внести расход</button>
+        ${commitBtn(can, 'save-smart', 20)}
       </div>
     </div>`;
   }
@@ -846,6 +856,11 @@
         inp.addEventListener('focus', () => { if (state.pad) { state.pad = false; rerender(); } });
         inp.addEventListener('keydown', e => { if (e.key === 'Enter') { inp.blur(); } });
       }
+      const cb = el.querySelector('.commit');
+      if (cb) M.slide(cb, {
+        enabled: () => cb.classList.contains('on'),
+        onComplete: () => (cb.dataset.act === 'save-smart' ? saveSmart(cb) : saveExpense(cb))
+      });
       state.padAnim = false;
     }
   }
@@ -912,7 +927,9 @@
     if (!btn || M.reduced()) { commit(); return; }
     saving = true;
     btn.classList.add('saving');
-    btn.innerHTML = `${svg('check', 20, 2.4)}Внесено`;
+    const label = btn.querySelector('.commit-t');
+    if (label) label.innerHTML = `${svg('check', 20, 2.4)}Внесено`;
+    else btn.innerHTML = `${svg('check', 20, 2.4)}Внесено`;
     setTimeout(commit, SAVE_DELAY);
   }
 
@@ -945,7 +962,9 @@
     if (!btn || M.reduced()) { commit(); return; }
     savingSmart = true;
     btn.classList.add('saving');
-    btn.innerHTML = `${svg('check', 20, 2.4)}Внесено`;
+    const label = btn.querySelector('.commit-t');
+    if (label) label.innerHTML = `${svg('check', 20, 2.4)}Внесено`;
+    else btn.innerHTML = `${svg('check', 20, 2.4)}Внесено`;
     setTimeout(commit, SAVE_DELAY);
   }
 

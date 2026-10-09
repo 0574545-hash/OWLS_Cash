@@ -73,7 +73,7 @@
 
 .name-input{background:#fff;border-color:var(--line);height:auto;padding:12px 15px;line-height:1.3}
 
-.commit{height:58px;width:100%;border-radius:var(--r-big);display:flex;align-items:center;justify-content:center;gap:9px;font:700 15px var(--body);background:var(--bg);color:var(--sand);border:1px solid var(--line);cursor:default;transition:transform .16s var(--ease-out),filter .16s var(--ease-out),box-shadow .16s var(--ease-out),background-color var(--t-base),color var(--t-base),border-color var(--t-base)}
+.commit{position:relative;overflow:hidden;touch-action:pan-y;height:58px;width:100%;border-radius:var(--r-big);display:flex;align-items:center;justify-content:center;gap:9px;font:700 15px var(--body);background:var(--bg);color:var(--sand);border:1px solid var(--line);cursor:default;transition:transform .16s var(--ease-out),filter .16s var(--ease-out),box-shadow .16s var(--ease-out),background-color var(--t-base),color var(--t-base),border-color var(--t-base)}
 .commit.on{background:linear-gradient(180deg,#F57048 0%,#EE5A2C 100%);color:#fff;border-color:transparent;box-shadow:0 10px 22px rgba(242,99,54,.34), inset 0 1px 0 rgba(255,255,255,.22);cursor:pointer}
 @media (hover:hover){.commit.on:hover{filter:brightness(.96)}}
 /* Нажатие: уходит за 110ms, возвращается за 160ms. Градиент сохраняем —
@@ -87,6 +87,22 @@
 @keyframes commit-press{0%{transform:translateY(1px) scale(.99)}55%{transform:translateY(0) scale(1.005)}100%{transform:translateY(0) scale(1)}}
 .commit.saving svg path{stroke-dasharray:26;animation:tick .26s var(--ease-out) .04s both}
 @keyframes tick{from{stroke-dashoffset:26}to{stroke-dashoffset:0}}
+
+/* Свайп вправо. Подпись по центру, ручка слева, заливка тянется за ручкой.
+   Всё лежит поверх кнопки: высота 58 px не меняется. */
+.commit-t{position:relative;z-index:1;display:flex;align-items:center;gap:9px;pointer-events:none;transition:opacity .16s var(--ease-out)}
+.slide-fill{position:absolute;inset:0;border-radius:inherit;background:rgba(255,255,255,.16);transform:scaleX(0);transform-origin:left;pointer-events:none;transition:transform .26s var(--ease-out)}
+.slide-thumb{position:absolute;z-index:2;left:5px;top:50%;width:48px;height:48px;border-radius:50%;display:none;align-items:center;justify-content:center;color:#fff;background:rgba(255,255,255,.2);box-shadow:inset 0 1px 0 rgba(255,255,255,.25);transform:translate(0,-50%);transition:transform .26s var(--ease-out),background-color .16s;touch-action:none;cursor:grab}
+.slide-thumb::before{content:'';position:absolute;inset:-5px}
+.commit.on .slide-thumb{display:flex}
+/* Пока тянем, ручка идёт за пальцем без задержки. */
+.commit.dragging .slide-thumb,.commit.dragging .slide-fill{transition:none}
+.commit.dragging .slide-thumb{background:rgba(255,255,255,.3);cursor:grabbing}
+/* Ручка уже несёт значок действия, плюс рядом с ней лишний. При внесении
+   на его месте галочка — её показываем. */
+.commit.on:not(.saving) .commit-t svg{display:none}
+.commit.saving .slide-thumb{display:none}
+@media (prefers-reduced-motion:reduce){.slide-thumb,.slide-fill{transition:none}}
 
 /* ---------- История ---------- */
 .page-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding-bottom:12px}

@@ -91,7 +91,9 @@
     const reset = () => { if (el) { el.classList.remove('dragging'); el.style.transform = ''; } id = null; locked = false; el = null; dx = 0; };
     container.addEventListener('pointerdown', e => {
       if (e.pointerType === 'mouse' || id !== null || !e.isPrimary) return;
-      if (e.target.closest('input,textarea,[data-grip],.hold')) return;
+      /* Свои жесты у полей, ручек сортировки, удержания и свайпа «Внести»:
+         перелистывание вкладок их не перехватывает. */
+      if (e.target.closest('input,textarea,[data-grip],.hold,.slide-thumb')) return;
       id = e.pointerId; x0 = e.clientX; y0 = e.clientY; t0 = performance.now(); dx = 0; locked = false;
       el = opts.getScreen();
     });
@@ -195,5 +197,71 @@
     list.addEventListener('pointercancel', end);
   }
 
-  window.OwlsMotion = { reduced, once, cascade, count, fillRings, transition, swipe, hold, sortable, SCREEN_MS };
+  /* Подтверждение сдвигом вправо. Внутри элемента ждём ручку .slide-thumb
+     и заливку .slide-fill. Тянем ручку, за порогом — onComplete.
+     Короткий рывок тоже засчитываем: не требовать же доводить до упора. */
+  function slide(el, opts) {
+    const thumb = el.querySelector('.slide-thumb');
+    const fill = el.querySelector('.slide-fill');
+    const label = el.querySelector('.slide-label');
+    if (!thumb) return;
+    let id = null, x0 = 0, dx = 0, moved = false, t0 = 0;
+    const travel = () => Math.max(1, el.clientWidth - thumb.offsetWidth - 10);
+
+    const paint = p => {
+      thumb.style.transform = 'translate(' + (p * travel()) + 'px, -50%)';
+      if (fill) fill.style.transform = 'scaleX(' + p + ')';
+      /* Надпись тает к середине пути: ручка не должна наезжать на буквы. */
+      if (label) label.style.opacity = String(Math.max(0, 1 - p * 2.2));
+      el.classList.toggle('slid', p > 0.02);
+    };
+    const release = () => {
+      el.classList.remove('dragging');
+      thumb.style.transform = '';
+      if (fill) fill.style.transform = '';
+      if (label) label.style.opacity = '';
+      el.classList.remove('slid');
+    };
+
+    thumb.addEventListener('pointerdown', e => {
+      if (!e.isPrimary || !opts.enabled()) return;
+      id = e.pointerId; x0 = e.clientX; dx = 0; moved = false; t0 = performance.now();
+      el.classList.add('dragging');
+      try { thumb.setPointerCapture(id); } catch (_) {}
+      e.preventDefault();
+    });
+    thumb.addEventListener('pointermove', e => {
+      if (e.pointerId !== id) return;
+      const t = travel();
+      dx = Math.max(0, Math.min(t, e.clientX - x0));
+      if (dx > 4) moved = true;
+      paint(dx / t);
+      e.preventDefault();
+    });
+    const end = e => {
+      if (e.pointerId !== id) return;
+      id = null;
+      const t = travel();
+      const p = dx / t;
+      const v = dx / Math.max(1, performance.now() - t0);
+      el.classList.remove('dragging');
+      if (p >= 0.68 || (v > 0.5 && dx > 44)) {
+        paint(1);
+        opts.onComplete();
+        setTimeout(release, 80);
+      } else {
+        release();
+      }
+      dx = 0;
+    };
+    thumb.addEventListener('pointerup', end);
+    thumb.addEventListener('pointercancel', end);
+    /* Тянули — значит это не нажатие: иначе расход внёсся бы дважды. */
+    thumb.addEventListener('click', e => {
+      if (!moved) return;
+      e.preventDefault(); e.stopPropagation();
+    });
+  }
+
+  window.OwlsMotion = { reduced, once, cascade, count, fillRings, transition, swipe, hold, sortable, slide, SCREEN_MS };
 })();
