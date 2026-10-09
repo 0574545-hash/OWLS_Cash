@@ -254,6 +254,7 @@
 /* Зона касания 44px: сам чип остаётся 28px, растёт только область нажатия. */
 .p-cat::before{content:'';position:absolute;inset:-8px -6px}
 .p-cat .p-cat-n{color:var(--ink)}
+.p-learn{display:inline-flex;color:var(--accent);flex:none}
 .p-cat .p-cat-n{overflow:hidden;text-overflow:ellipsis}
 .p-cat svg:last-child{color:var(--sand);flex:none}
 .p-cat.none{color:var(--muted);background:transparent;border:1px dashed var(--sand)}
@@ -265,7 +266,6 @@
 .p-name{font:500 11.5px var(--body);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .parse.idle .p-sum,.parse.idle .p-sum i,.parse.idle .p-cat,.parse.idle .p-cat .p-cat-n,.parse.idle .p-name{color:var(--faint)}
 .parse.idle .p-cat{background:transparent}
-.smart-note{min-height:34px;font:500 11.5px var(--body);color:var(--faint);line-height:1.45}
 
 /* строка истории без категории */
 .row.unsorted{background:#FFFBF8}

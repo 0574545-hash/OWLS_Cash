@@ -402,15 +402,14 @@
         <div class="parse${empty ? ' idle' : ''}">
           <div class="parse-top">
             <span class="p-sum">${r.amount > 0 ? fmt(r.amount) : '0'}<i>₽</i></span>
-            <button type="button" class="p-cat${cat ? '' : ' none'}${state.smartCat ? ' manual' : ''}" data-act="smart-cat" aria-label="Категория: ${esc(catLabel)}. Коснитесь, чтобы изменить">
-              ${svg(cat ? cat.icon : 'circle-help', 15, 1.7)}<span class="p-cat-n">${esc(catLabel)}</span>${svg('chevron-right', 13, 2)}
+            <button type="button" class="p-cat${cat ? '' : ' none'}${state.smartCat ? ' manual' : ''}" data-act="smart-cat" aria-label="${smartCatLabel(r, catLabel)}">
+              ${svg(cat ? cat.icon : 'circle-help', 15, 1.7)}<span class="p-cat-n">${esc(catLabel)}</span>${smartLearnWord(r) ? `<i class="p-learn">${svg('sparkles', 13, 1.8)}</i>` : ''}${svg('chevron-right', 13, 2)}
             </button>
           </div>
           <div class="p-name">${empty ? 'наименование' : esc(r.name || catLabel)}</div>
         </div>
-        <div class="smart-note">${smartNote(r, cat, empty)}</div>
+        <button type="button" class="commit${can ? ' on' : ''}" data-act="save-smart" aria-disabled="${!can}">${svg('plus', 20, 2.3)}Внести расход</button>
       </div>
-      <button type="button" class="commit${can ? ' on' : ''}" data-act="save-smart" aria-disabled="${!can}">${svg('plus', 20, 2.3)}Внести расход</button>
     </div>`;
   }
 
@@ -423,11 +422,10 @@
     return learnCandidates(r.name, cat.id)[0] || '';
   }
 
-  function smartNote(r, cat, empty) {
+  function smartCatLabel(r, catLabel) {
     const word = smartLearnWord(r);
-    if (word) return `Запомню «${word}» как ${catById(state.smartCat).name}.`;
-    if (!empty && !cat) return 'Категорию можно выбрать прямо здесь или назначить потом в истории.';
-    return 'Напишите строкой: сумма и категория определятся сами.';
+    const base = `Категория: ${catLabel}. Коснитесь, чтобы изменить`;
+    return word ? `${base}. Слово «${word}» запомнится за этой категорией` : base;
   }
 
   /* Выбор категории прямо из строки разбора. */
@@ -446,6 +444,7 @@
           `<button type="button" class="cat${cur && cur.id === c.id ? ' on' : ''}" data-act="smartcat-pick" data-id="${c.id}" title="${esc(c.name)}" aria-label="${esc(c.name)}" aria-pressed="${!!cur && cur.id === c.id}">${svg(c.icon, 26, 1.6)}</button>`
         ).join('')}</div>`).join('')}</div>
         <div class="picked-name">${cur ? esc(cur.name) : 'не выбрана'}</div>
+        <p class="hint center">Выбранное здесь запомнится за словом из строки и дальше подставится само.</p>
         ${state.smartCat ? `<button type="button" class="btn-ghost wide" data-act="smartcat-auto">Определять самому</button>` : ''}
       </div>
     </div>`;
@@ -473,11 +472,13 @@
       const pc = parse.querySelector('.p-cat');
       pc.classList.toggle('none', !cat);
       pc.classList.toggle('manual', !!state.smartCat);
-      pc.innerHTML = svg(cat ? cat.icon : 'circle-help', 15, 1.7) + `<span class="p-cat-n">${esc(catLabel)}</span>` + svg('chevron-right', 13, 2);
+      pc.innerHTML = svg(cat ? cat.icon : 'circle-help', 15, 1.7)
+        + `<span class="p-cat-n">${esc(catLabel)}</span>`
+        + (smartLearnWord(r) ? `<i class="p-learn">${svg('sparkles', 13, 1.8)}</i>` : '')
+        + svg('chevron-right', 13, 2);
+      pc.setAttribute('aria-label', smartCatLabel(r, catLabel));
       parse.querySelector('.p-name').textContent = empty ? 'наименование' : (r.name || catLabel);
     }
-    const note = el.querySelector('.smart-note');
-    if (note) note.textContent = smartNote(r, cat, empty);
     const h = el.querySelector('.form-hint');
     if (h) h.textContent = can ? 'готово к внесению' : 'умный ввод';
     const c = el.querySelector('.commit');
