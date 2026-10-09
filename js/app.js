@@ -414,8 +414,13 @@
     });
   }
 
+  let micSkipClick = false;   // долгое нажатие открыло журнал — щелчок не считаем
+
   function micToggle() {
-    if (state.mic || micStarting) { stopMic(); return; }
+    if (micSkipClick) { micSkipClick = false; return; }
+    mlog('нажатие: запись ' + (state.mic ? 'идёт' : 'нет') + (micStarting ? ', запуск идёт' : '') + ', текст ' + (micHeard ? 'был' : 'не был'));
+    /* Остановили сами, а текста так и не было — это тоже неудача: показываем журнал. */
+    if (state.mic || micStarting) { stopMic(!micHeard); return; }
     if (!micOk()) return;
     /* Текст, который был до начала записи: распознанное дописываем к нему. */
     micBefore = state.smartText.trim();
@@ -913,6 +918,18 @@
         inp.addEventListener('input', () => { state.comment = inp.value; });
         inp.addEventListener('focus', () => { if (state.pad) { state.pad = false; rerender(); } });
         inp.addEventListener('keydown', e => { if (e.key === 'Enter') { inp.blur(); } });
+      }
+      /* Долгое нажатие на микрофон открывает журнал в любой момент. */
+      const mb = el.querySelector('.mic');
+      if (mb) {
+        let lp = 0;
+        const cancel = () => clearTimeout(lp);
+        mb.addEventListener('pointerdown', () => {
+          cancel();
+          lp = setTimeout(() => { micSkipClick = true; mlog('журнал открыт долгим нажатием'); showMicLog(); }, 650);
+        });
+        ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => mb.addEventListener(t, cancel));
+        mb.addEventListener('contextmenu', e => e.preventDefault());
       }
       const cb = el.querySelector('.commit');
       if (cb) {
