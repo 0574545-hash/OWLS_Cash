@@ -246,9 +246,13 @@
       const v = dx / Math.max(1, performance.now() - t0);
       el.classList.remove('dragging');
       if (p >= 0.68 || (v > 0.5 && dx > 44)) {
+        /* Довозим ручку до края с торможением и только потом вносим:
+           подтверждение должно быть видно, а не мелькнуть. */
+        el.classList.add('slide-done');
         paint(1);
-        opts.onComplete();
-        setTimeout(release, 80);
+        setTimeout(() => opts.onComplete(), reduced() ? 0 : 260);
+        /* Страховка: если внесение не перерисовало экран, возвращаем кнопку. */
+        setTimeout(() => { if (el.isConnected && !el.classList.contains('saving')) { el.classList.remove('slide-done'); release(); } }, 2000);
       } else {
         release();
       }
