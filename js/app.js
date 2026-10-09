@@ -297,10 +297,11 @@
     return out;
   }
 
-  /* Кнопка «Внести расход»: нажатие или свайп ручки вправо. Ручка и заливка
-     лежат поверх кнопки и её габаритов не меняют. */
+  /* Кнопка «Внести расход» — только свайп ручки вправо, нажатие не вносит:
+     так расход не уйдёт случайным касанием. Ручка и заливка лежат поверх
+     кнопки и её габаритов не меняют. */
   function commitBtn(can, act, iconSize) {
-    return `<button type="button" class="commit${can ? ' on' : ''}" data-act="${act}" aria-disabled="${!can}">
+    return `<button type="button" class="commit${can ? ' on' : ''}" data-slide-act="${act}" aria-disabled="${!can}">
           <i class="slide-fill" aria-hidden="true"></i>
           <span class="commit-t slide-label">${svg('plus', iconSize, 2.3)}Внести расход</span>
           <i class="slide-thumb" aria-hidden="true">${svg('chevron-right', 20, 2.4)}</i>
@@ -312,6 +313,7 @@
      свои адреса, а у посредника в облаке адрес плавающий. На iPhone за этим
      стоит диктовка Apple, в Chrome — распознавание Google. Где такого нет,
      кнопку не показываем: мёртвая кнопка хуже её отсутствия. */
+  const APP_V = (document.querySelector('script[src*="app.js"]')?.src.match(/v=(\d+)/) || [])[1] || '?';
   const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
   const micOk = () => !!Rec;
   const MIC_LIMIT = 15000;   // сам закроется: открытый микрофон забывать нельзя
@@ -322,6 +324,17 @@
   let micStarting = false, micHeard = false, micBefore = '';
   let micEverStarted = false;
   let micTimer = 0, micWatch = 0;
+
+  /* Журнал событий микрофона. Временный: четыре правки по догадкам не помогли,
+     нужно увидеть, что телефон присылает на самом деле. Показывается сам
+     после неудачного сеанса. */
+  const micLog = [];
+  const micT0 = performance.now();
+  let micInst = 0;
+  function mlog(msg) {
+    micLog.push(((performance.now() - micT0) / 1000).toFixed(2) + ' ' + msg);
+    if (micLog.length > 60) micLog.shift();
+  }
 
   /* На каждый сеанс — новый распознаватель со своими обработчиками и номером.
      «Конец» прошлого сеанса приходит с опозданием, уже после начала нового.
@@ -343,26 +356,14 @@
       clearTimeout(micWatch);
       setMic(true);
       clearTimeout(micTimer);
-      micTimer = setTimeout(() => stopMic(), MIC_LIMIT);
+      micTimer = setTimeout(() => { mlog('лимит 15 с'); stopMic(!micHeard); }, MIC_LIMIT);
     };
 
     /* Текст принимаем всегда, пока сеанс наш. Никаких проверок состояния
        кнопки: ошибиться в её состоянии дешевле, чем потерять сказанное. */
     r.onresult = e => {
       if (gen !== micGen) return;
-      let said = '';
-      for (let i = 0; i < e.results.length; i++) said += e.results[i][0].transcript;
-      said = said.trim();
-      if (!said) return;
-      micHeard = true;
-      state.smartText = micBefore ? micBefore + ' ' + said : said;
-      const el = state.tab === 'today' ? currentScreen() : null;
-      if (!el) return;
-      const si = el.querySelector('#smart-in');
-      if (si) si.value = state.smartText;
-      patchSmart(el);
-      /* Сову спрашиваем только по готовой фразе, а не по каждому слову. */
-      if (e.results[e.results.length - 1].isFinal) sovaSchedule(state.smartText);
+      micAccept(e);
     };
 
     r.onerror = ev => {
@@ -376,6 +377,41 @@
       micDetach();
       micFinish(!micHeard);
     };
+  }
+
+  function micAccept(e) {
+    let said = '';
+    for (let i = 0; i < e.results.length; i++) said += e.results[i][0].transcript;
+    said = said.trim();
+    if (!said) return;
+    micHeard = true;
+    state.smartText = micBefore ? micBefore + ' ' + said : said;
+    const el = state.tab === 'today' ? currentScreen() : null;
+    if (!el) return;
+    const si = el.querySelector('#smart-in');
+    if (si) si.value = state.smartText;
+    patchSmart(el);
+    /* Сову спрашиваем только по готовой фразе, а не по каждому слову. */
+    if (e.results[e.results.length - 1].isFinal) sovaSchedule(state.smartText);
+  }
+
+  /* Слушатели, которые не снимаются никогда: пишут журнал и ловят случай,
+     когда Safari отдаёт звук нового сеанса прежнему распознавателю. Тогда
+     обработчики прежнего уже сняты, и без этого сказанное терялось бы. */
+  function micWatchRec(r, k) {
+    ['start', 'audiostart', 'soundstart', 'speechstart', 'speechend', 'soundend', 'audioend', 'nomatch']
+      .forEach(t => r.addEventListener(t, () => mlog('#' + k + ' ' + t)));
+    r.addEventListener('error', e => mlog('#' + k + ' error: ' + (e.error || '?') + (e.message ? ' — ' + e.message : '')));
+    r.addEventListener('end', () => mlog('#' + k + ' end'));
+    r.addEventListener('result', e => {
+      const last = e.results[e.results.length - 1];
+      const txt = Array.from(e.results).map(x => x[0].transcript).join('').trim();
+      mlog('#' + k + ' result: ' + (txt ? '«' + txt.slice(0, 32) + '»' : 'пусто') + (last && last.isFinal ? ', итог' : ''));
+      if (r !== recObj && (state.mic || micStarting) && txt) {
+        mlog('   ↳ пришло прежнему #' + k + ', беру в текущий сеанс');
+        micAccept(e);
+      }
+    });
   }
 
   function micToggle() {
@@ -392,13 +428,17 @@
      пробуем ещё раз; не вышло и со второй — мигаем. */
   function micStart(retry) {
     micDetach();
-    try { recObj = new Rec(); } catch { micFail(); return; }
+    try { recObj = new Rec(); } catch (err) { mlog('new: сбой ' + (err && err.message)); micFail(); return; }
+    const k = ++micInst;
+    micWatchRec(recObj, k);
     const gen = ++micGen;
     bindRec(recObj, gen);
     micStarting = true;
+    mlog('── #' + k + ' start()' + (retry ? ', повтор' : ''));
     try {
       recObj.start();
-    } catch {
+    } catch (err) {
+      mlog('#' + k + ' start бросил: ' + (err && err.message));
       micStarting = false;
       if (retry) { micFail(); return; }
       micRecycle();
@@ -408,6 +448,7 @@
     clearTimeout(micWatch);
     micWatch = setTimeout(() => {
       if (state.mic) return;          // всё-таки открылся
+      mlog('сторож: не открылся за ' + (micEverStarted ? MIC_WATCH : MIC_WATCH_1) + ' мс');
       micStarting = false;
       micRecycle();
       if (retry) micFail(); else micStart(true);
@@ -460,6 +501,8 @@
 
   /* Мигание кнопки: меняем только цвет, сдвиг сбил бы её с места. */
   function micMiss() {
+    mlog('✕ ничего не разобрано');
+    showMicLog();
     const el = state.tab === 'today' ? currentScreen() : null;
     const b = el && el.querySelector('.mic');
     if (!b) return;
@@ -467,6 +510,21 @@
     void b.offsetWidth;
     b.classList.add('miss');
     setTimeout(() => b.classList.remove('miss'), 600);
+  }
+
+  function showMicLog() {
+    let box = document.getElementById('mic-log');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'mic-log';
+      box.className = 'mic-log';
+      box.addEventListener('click', () => box.remove());
+      document.body.appendChild(box);
+    }
+    const ua = navigator.userAgent.match(/OS (\d+[_\d]*)/);
+    box.innerHTML = '<b>Журнал микрофона</b><i>сфотографируйте экран и пришлите · нажмите, чтобы закрыть</i>'
+      + '<pre>' + esc('iOS ' + (ua ? ua[1].replace(/_/g, '.') : '?') + ', ' + (navigator.standalone ? 'с экрана «Домой»' : 'в Safari') + ', v' + APP_V + '\n'
+      + micLog.slice(-26).join('\n')) + '</pre>';
   }
 
   /* Класс переключаем на месте: перерисовка во время записи сбросила бы фокус. */
@@ -857,10 +915,21 @@
         inp.addEventListener('keydown', e => { if (e.key === 'Enter') { inp.blur(); } });
       }
       const cb = el.querySelector('.commit');
-      if (cb) M.slide(cb, {
-        enabled: () => cb.classList.contains('on'),
-        onComplete: () => (cb.dataset.act === 'save-smart' ? saveSmart(cb) : saveExpense(cb))
-      });
+      if (cb) {
+        M.slide(cb, {
+          enabled: () => cb.classList.contains('on'),
+          onComplete: () => (cb.dataset.slideAct === 'save-smart' ? saveSmart(cb) : saveExpense(cb))
+        });
+        /* Нажатие ничего не вносит, но и не молчит: ручка подскакивает
+           вправо и возвращается — подсказка, что её надо тянуть. */
+        cb.addEventListener('click', () => {
+          if (!cb.classList.contains('on') || cb.classList.contains('saving')) return;
+          cb.classList.remove('hint');
+          void cb.offsetWidth;
+          cb.classList.add('hint');
+          setTimeout(() => cb.classList.remove('hint'), 700);
+        });
+      }
       state.padAnim = false;
     }
   }

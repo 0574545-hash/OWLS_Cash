@@ -102,6 +102,16 @@
    на его месте галочка — её показываем. */
 .commit.on:not(.saving) .commit-t svg{display:none}
 .commit.saving .slide-thumb{display:none}
+/* Нажатие не вносит: ручка подскакивает вправо и возвращается — тянуть её. */
+.commit.hint .slide-thumb{animation:slide-hint .6s var(--ease-out)}
+@keyframes slide-hint{0%,100%{transform:translate(0,-50%)}35%{transform:translate(22px,-50%)}65%{transform:translate(-3px,-50%)}}
+@media (prefers-reduced-motion:reduce){.commit.hint .slide-thumb{animation:none}}
+
+/* Временный журнал микрофона. Лежит поверх экрана и ничего не сдвигает. */
+.mic-log{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom) + 84px);z-index:90;max-height:46vh;overflow:auto;padding:12px 14px;border-radius:var(--r-btn);background:#fff;border:1px solid var(--line);box-shadow:0 12px 32px rgba(11,30,53,.18);color:var(--ink)}
+.mic-log b{display:block;font:700 13px var(--body)}
+.mic-log i{display:block;font:500 11px var(--body);font-style:normal;color:var(--muted);padding:2px 0 8px}
+.mic-log pre{margin:0;font:500 11px/1.45 ui-monospace,Menlo,monospace;white-space:pre-wrap;word-break:break-word;color:var(--ink)}
 @media (prefers-reduced-motion:reduce){.slide-thumb,.slide-fill{transition:none}}
 
 /* ---------- История ---------- */
