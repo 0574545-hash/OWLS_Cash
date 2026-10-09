@@ -299,9 +299,10 @@
   /* ---------- разбор через Сову ---------- */
   /* Запрос уходит не прямо в Ollama, а посреднику (Cloudflare Worker,
      см. worker/owls-sova.js): страница на https, у Совы обычный http,
-     и адрес сервера не должен лежать в открытом репозитории. */
+     и адрес сервера не должен лежать в открытом репозитории. Путь в ссылке —
+     это ключ: без него посредник отвечает 404, поэтому ссылку шлём целиком. */
   const SOVA_IDLE = 550;   // пауза в наборе, после которой спрашиваем
-  const SOVA_WAIT = 2200;  // дольше не ждём: разбор на устройстве уже на экране
+  const SOVA_WAIT = 4000;  // дольше не ждём: разбор на устройстве уже на экране
   let sovaTimer = 0, sovaSeq = 0;
 
   const sovaReady = () => !!(state.data.smart && state.data.sova && state.data.sovaUrl);
@@ -336,7 +337,7 @@
     const ctl = typeof AbortController === 'function' ? new AbortController() : null;
     const stop = setTimeout(() => { if (ctl) ctl.abort(); }, SOVA_WAIT);
     const done = () => { clearTimeout(stop); if (seq === sovaSeq) setSovaBusy(false); };
-    fetch(state.data.sovaUrl.replace(/\/+$/, '') + '/parse', {
+    fetch(state.data.sovaUrl.replace(/\/+$/, ''), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: ctl ? ctl.signal : undefined,
@@ -901,8 +902,8 @@
           <span class="switch${state.data.sova ? ' on' : ''}"><i></i></span>
         </button>` : ''}
         ${state.data.smart && state.data.sova ? `<div class="set-row bordered col">
-          <span class="t"><b>Адрес разбора</b><span>Ссылка на посредника из worker/owls-sova.js. Без неё разбор остаётся на устройстве.</span></span>
-          <input id="sova-url" class="input" type="url" value="${esc(state.data.sovaUrl)}" placeholder="https://owls-sova.workers.dev"
+          <span class="t"><b>Адрес разбора</b><span>Ссылка на посредника целиком, вместе с путём: путь в ней служит ключом. Без неё разбор остаётся на устройстве.</span></span>
+          <input id="sova-url" class="input" type="url" value="${esc(state.data.sovaUrl)}" placeholder="https://owls-sova.workers.dev/ключ"
                  autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" aria-label="Адрес посредника для разбора через Сову">
         </div>` : ''}
         ${learnedCount() ? `<button type="button" class="set-row bordered" data-act="learned-list">
