@@ -78,6 +78,8 @@
     tab: 'today',
     smartText: '',
     smartCat: null,   // категория, выбранная руками поверх распознанной
+    sovaRes: null,    // последний разбор от Совы: {text, amount, category, name}
+    sovaBusy: false,  // ждём ответ Совы
     amount: '', cat: null, comment: '', pad: false, padAnim: false,
     settings: false, editor: null,
     data: null
@@ -91,6 +93,8 @@
       edits: 0,          // правок с последней копии
       backupSnooze: '',  // день, до которого напоминание отложено
       smart: false,      // умный ввод: одна строка вместо трёх полей
+      sova: false,       // разбор фразы через Сову, а не только правилами
+      sovaUrl: '',       // адрес посредника, который спрашивает Сову
       learned: {}        // слово → id категории, выученное на ваших правках
     };
   }
@@ -100,6 +104,7 @@
     if (!d || !Array.isArray(d.categories) || !Array.isArray(d.expenses)) return base;
     const out = Object.assign(base, d);
     if (!out.learned || typeof out.learned !== 'object') out.learned = {};
+    out.sovaUrl = typeof out.sovaUrl === 'string' ? out.sovaUrl : '';
     return out;
   }
   state.data = normalize(Store.load());
@@ -216,7 +221,7 @@
   }
 
   /* Разбор строки. Возвращает сумму, категорию (или null) и наименование. */
-  function parseSmart(text) {
+  function parseLocal(text) {
     const src = String(text || '').trim();
     let amount = 0, rest = src;
 
@@ -272,6 +277,90 @@
 
     const name = rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : '';
     return { amount, cat, name, learnedHit, raw: src };
+  }
+
+  /* Разбор строки для экрана: правила на устройстве плюс, если Сова успела
+     ответить на эту же строку, её разбор поверх. Выученные вами слова Сова
+     не переучивает — ваша правка главнее любой догадки. */
+  function parseSmart(text) {
+    const base = parseLocal(text);
+    const s = state.sovaRes;
+    if (!s || s.text !== base.raw) return base;
+    const out = Object.assign({}, base, { sova: true });
+    if (s.amount > 0) out.amount = s.amount;
+    if (s.name) out.name = s.name;
+    if (!base.learnedHit && s.category) {
+      const c = catByName(s.category);
+      if (c && !c.sys) out.cat = c;
+    }
+    return out;
+  }
+
+  /* ---------- разбор через Сову ---------- */
+  /* Запрос уходит не прямо в Ollama, а посреднику (Cloudflare Worker,
+     см. worker/owls-sova.js): страница на https, у Совы обычный http,
+     и адрес сервера не должен лежать в открытом репозитории. */
+  const SOVA_IDLE = 550;   // пауза в наборе, после которой спрашиваем
+  const SOVA_WAIT = 2200;  // дольше не ждём: разбор на устройстве уже на экране
+  let sovaTimer = 0, sovaSeq = 0;
+
+  const sovaReady = () => !!(state.data.smart && state.data.sova && state.data.sovaUrl);
+
+  function sovaForget() {
+    clearTimeout(sovaTimer);
+    sovaSeq++;
+    state.sovaRes = null;
+    setSovaBusy(false);
+  }
+
+  function setSovaBusy(on) {
+    if (state.sovaBusy === on) return;
+    state.sovaBusy = on;
+    const el = state.tab === 'today' ? currentScreen() : null;
+    const p = el && el.querySelector('.parse');
+    if (p) p.classList.toggle('waiting', on);
+  }
+
+  function sovaSchedule(text) {
+    clearTimeout(sovaTimer);
+    const src = String(text || '').trim();
+    if (state.sovaRes && state.sovaRes.text !== src) state.sovaRes = null;
+    if (!sovaReady() || src.length < 3) { sovaSeq++; setSovaBusy(false); return; }
+    if (state.sovaRes && state.sovaRes.text === src) return;
+    sovaTimer = setTimeout(() => sovaAsk(src), SOVA_IDLE);
+  }
+
+  function sovaAsk(src) {
+    const seq = ++sovaSeq;
+    setSovaBusy(true);
+    const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+    const stop = setTimeout(() => { if (ctl) ctl.abort(); }, SOVA_WAIT);
+    const done = () => { clearTimeout(stop); if (seq === sovaSeq) setSovaBusy(false); };
+    fetch(state.data.sovaUrl.replace(/\/+$/, '') + '/parse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: ctl ? ctl.signal : undefined,
+      body: JSON.stringify({
+        text: src,
+        categories: orderedCats().filter(c => !c.sys).map(c => c.name)
+      })
+    }).then(res => {
+      if (!res.ok) throw new Error('http ' + res.status);
+      return res.json();
+    }).then(d => {
+      /* Пока ждали, строку могли дописать — тогда ответ уже не о ней. */
+      if (seq !== sovaSeq || src !== String(state.smartText).trim()) return;
+      state.sovaRes = {
+        text: src,
+        amount: Math.max(0, Math.round(+d.amount) || 0),
+        category: String(d.category || ''),
+        name: String(d.name || '')
+      };
+      const el = state.tab === 'today' ? currentScreen() : null;
+      if (el) patchSmart(el);
+    }).catch(() => {
+      /* Молчим намеренно: на экране стоит разбор на устройстве, он не хуже. */
+    }).then(done, done);
   }
 
   /* Куда слово попадёт само, без обучения. */
@@ -399,7 +488,7 @@
       <div class="field">
         <input id="smart-in" class="smart-in" type="text" value="${esc(state.smartText)}" placeholder="1000 кафе с семьёй"
                autocomplete="off" autocapitalize="sentences" enterkeyhint="done" maxlength="80" aria-label="Сумма и описание одной строкой">
-        <div class="parse${empty ? ' idle' : ''}">
+        <div class="parse${empty ? ' idle' : ''}${state.sovaBusy ? ' waiting' : ''}">
           <div class="parse-top">
             <span class="p-sum">${r.amount > 0 ? fmt(r.amount) : '0'}<i>₽</i></span>
             <button type="button" class="p-cat${cat ? '' : ' none'}${state.smartCat ? ' manual' : ''}" data-act="smart-cat" aria-label="${smartCatLabel(r, catLabel)}">
@@ -407,6 +496,7 @@
             </button>
           </div>
           <div class="p-name">${empty ? 'наименование' : esc(r.name || catLabel)}</div>
+          <i class="p-wait"></i>
         </div>
         <button type="button" class="commit${can ? ' on' : ''}" data-act="save-smart" aria-disabled="${!can}">${svg('plus', 20, 2.3)}Внести расход</button>
       </div>
@@ -468,6 +558,7 @@
     const parse = el.querySelector('.parse');
     if (parse) {
       parse.classList.toggle('idle', empty);
+      parse.classList.toggle('waiting', state.sovaBusy);
       parse.querySelector('.p-sum').innerHTML = `${r.amount > 0 ? fmt(r.amount) : '0'}<i>₽</i>`;
       const pc = parse.querySelector('.p-cat');
       pc.classList.toggle('none', !cat);
@@ -566,7 +657,7 @@
     if (tab === 'today') {
       const si = el.querySelector('#smart-in');
       if (si) {
-        si.addEventListener('input', () => { state.smartText = si.value; patchSmart(el); });
+        si.addEventListener('input', () => { state.smartText = si.value; sovaSchedule(si.value); patchSmart(el); });
         si.addEventListener('keydown', e => { if (e.key === 'Enter') { si.blur(); saveSmart(el.querySelector('.commit')); } });
       }
       const inp = el.querySelector('#exp-name');
@@ -665,6 +756,7 @@
       bumpEdits();
       persist();
       state.smartText = '';
+      sovaForget();
       state.smartCat = null;
       rerender();
       M.once(document.getElementById('card-today'), 'nudge');
@@ -804,6 +896,15 @@
           <span class="t"><b>Умный ввод</b><span>Одна строка вместо трёх полей. «1000 кафе с семьёй» разберётся само.</span></span>
           <span class="switch${state.data.smart ? ' on' : ''}"><i></i></span>
         </button>
+        ${state.data.smart ? `<button type="button" class="set-row bordered" data-act="toggle-sova" role="switch" aria-checked="${state.data.sova}">
+          <span class="t"><b>Разбор через Сову</b><span>Свободную фразу разбирает ИИ. Не ответил — выручает разбор на устройстве.</span></span>
+          <span class="switch${state.data.sova ? ' on' : ''}"><i></i></span>
+        </button>` : ''}
+        ${state.data.smart && state.data.sova ? `<div class="set-row bordered col">
+          <span class="t"><b>Адрес разбора</b><span>Ссылка на посредника из worker/owls-sova.js. Без неё разбор остаётся на устройстве.</span></span>
+          <input id="sova-url" class="input" type="url" value="${esc(state.data.sovaUrl)}" placeholder="https://owls-sova.workers.dev"
+                 autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" aria-label="Адрес посредника для разбора через Сову">
+        </div>` : ''}
         ${learnedCount() ? `<button type="button" class="set-row bordered" data-act="learned-list">
           <span class="t"><b>Запомнено слов: ${learnedCount()}</b><span>${esc(learnedPreview())}</span></span>
           <span class="c-chev">${svg('chevron-right', 16, 1.8)}</span>
@@ -824,6 +925,11 @@
   function openSettings() {
     state.settings = true;
     overlay.innerHTML = renderSettings();
+    const su = overlay.querySelector('#sova-url');
+    if (su) {
+      su.addEventListener('input', () => { state.data.sovaUrl = su.value.trim(); sovaForget(); persist(); });
+      su.addEventListener('keydown', e => { if (e.key === 'Enter') su.blur(); });
+    }
     const list = overlay.querySelector('#catlist');
     list.querySelectorAll('.del.hold').forEach(b => M.hold(b, {
       duration: 800,
@@ -1121,7 +1227,8 @@
       case 'sample': loadSample(); break;
       case 'bk-save': backupSave(act); break;
       case 'bk-restore': pickBackupFile(); break;
-      case 'toggle-smart': state.data.smart = !state.data.smart; state.smartText = ''; state.pad = false; persist(); openSettings(); break;
+      case 'toggle-smart': state.data.smart = !state.data.smart; state.smartText = ''; sovaForget(); state.pad = false; persist(); openSettings(); break;
+      case 'toggle-sova': state.data.sova = !state.data.sova; sovaForget(); persist(); openSettings(); break;
       case 'learned-list': openLearned(); break;
       case 'del-cat': {
         const used = +act.dataset.used;
