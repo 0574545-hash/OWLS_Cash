@@ -77,6 +77,7 @@
   const state = {
     tab: 'today',
     smartText: '',
+    smartCat: null,   // категория, выбранная руками поверх распознанной
     amount: '', cat: null, comment: '', pad: false, padAnim: false,
     settings: false, editor: null,
     data: null
@@ -362,12 +363,18 @@
 
   /* Карточка умного ввода. Высота не зависит от состояния: полоса разбора
      и подпись под ней есть всегда, меняется только содержимое. */
+  /* Категория показа: ручной выбор важнее распознанного. */
+  function smartCat(r) {
+    const manual = state.smartCat && catById(state.smartCat);
+    return manual || r.cat || null;
+  }
+
   function smartForm() {
     const r = parseSmart(state.smartText);
     const empty = !state.smartText.trim();
     const can = r.amount > 0;
-    const catName = r.cat ? r.cat.name : (empty ? 'категория' : 'Без категории');
-    const catIcon = r.cat ? r.cat.icon : 'circle-help';
+    const cat = smartCat(r);
+    const catLabel = cat ? cat.name : (empty ? 'категория' : 'Без категории');
     return `<div class="card form cascade-item">
       <div class="form-h"><span class="form-t">Новый расход</span><span class="form-hint">${can ? 'готово к внесению' : 'умный ввод'}</span></div>
       <div class="field">
@@ -377,16 +384,46 @@
         <div class="parse${empty ? ' idle' : ''}">
           <div class="parse-top">
             <span class="p-sum">${r.amount > 0 ? fmt(r.amount) : '0'}<i>₽</i></span>
-            <span class="p-cat${r.cat ? '' : ' none'}">${svg(catIcon, 15, 1.7)}${esc(catName)}</span>
+            <button type="button" class="p-cat${cat ? '' : ' none'}${state.smartCat ? ' manual' : ''}" data-act="smart-cat" aria-label="Категория: ${esc(catLabel)}. Коснитесь, чтобы изменить">
+              ${svg(cat ? cat.icon : 'circle-help', 15, 1.7)}<span class="p-cat-n">${esc(catLabel)}</span>${svg('chevron-right', 13, 2)}
+            </button>
           </div>
-          <div class="p-name">${empty ? 'наименование' : esc(r.name || catName)}</div>
+          <div class="p-name">${empty ? 'наименование' : esc(r.name || catLabel)}</div>
         </div>
-        <div class="smart-note">${!empty && !r.cat
-          ? 'Категорию назначите один раз в истории, дальше подставится сама.'
+        <div class="smart-note">${!empty && !cat
+          ? 'Категорию можно выбрать прямо здесь или назначить потом в истории.'
           : 'Напишите строкой: сумма и категория определятся сами.'}</div>
       </div>
-      <button type="button" class="commit${can ? ' on' : ''}" data-act="save-smart" aria-disabled="${!can}">${svg('plus', 19, 2.2)}Внести расход</button>
+      <button type="button" class="commit big${can ? ' on' : ''}" data-act="save-smart" aria-disabled="${!can}">${svg('plus', 20, 2.3)}Внести расход</button>
     </div>`;
+  }
+
+  /* Выбор категории прямо из строки разбора. */
+  function openSmartCat() {
+    const r = parseSmart(state.smartText);
+    const cur = smartCat(r);
+    const cats = orderedCats().filter(c => !c.sys && !c.hidden);
+    const rows = [];
+    let i = 0;
+    for (const size of honeyRows(cats.length)) { rows.push(cats.slice(i, i + size)); i += size; }
+    sheetHost.innerHTML = `<div class="sheet-wrap">
+      <div class="dim" data-act="close-smartcat"></div>
+      <div class="sheet" role="dialog" aria-modal="true" aria-label="Категория расхода">
+        <div class="sheet-h"><span class="sec-t">Категория</span><button type="button" class="x pressable" data-act="close-smartcat" aria-label="Закрыть">${svg('x', 18, 1.8)}</button></div>
+        <div class="honey">${rows.map(row => `<div class="honey-row">${row.map(c =>
+          `<button type="button" class="cat${cur && cur.id === c.id ? ' on' : ''}" data-act="smartcat-pick" data-id="${c.id}" title="${esc(c.name)}" aria-label="${esc(c.name)}" aria-pressed="${!!cur && cur.id === c.id}">${svg(c.icon, 26, 1.6)}</button>`
+        ).join('')}</div>`).join('')}</div>
+        <div class="picked-name">${cur ? esc(cur.name) : 'не выбрана'}</div>
+        ${state.smartCat ? `<button type="button" class="btn-ghost wide" data-act="smartcat-auto">Определять самому</button>` : ''}
+      </div>
+    </div>`;
+  }
+  function closeSmartCat() {
+    const wrap = sheetHost.querySelector('.sheet-wrap');
+    if (!wrap) return;
+    if (M.reduced()) { sheetHost.innerHTML = ''; return; }
+    wrap.classList.add('closing');
+    setTimeout(() => { sheetHost.innerHTML = ''; }, 210);
   }
 
   /* Обновление полосы разбора без перерисовки: фокус в поле не теряется. */
@@ -394,19 +431,22 @@
     const r = parseSmart(state.smartText);
     const empty = !state.smartText.trim();
     const can = r.amount > 0;
-    const catName = r.cat ? r.cat.name : (empty ? 'категория' : 'Без категории');
+    if (empty) state.smartCat = null;
+    const cat = smartCat(r);
+    const catLabel = cat ? cat.name : (empty ? 'категория' : 'Без категории');
     const parse = el.querySelector('.parse');
     if (parse) {
       parse.classList.toggle('idle', empty);
       parse.querySelector('.p-sum').innerHTML = `${r.amount > 0 ? fmt(r.amount) : '0'}<i>₽</i>`;
       const pc = parse.querySelector('.p-cat');
-      pc.classList.toggle('none', !r.cat);
-      pc.innerHTML = svg(r.cat ? r.cat.icon : 'circle-help', 15, 1.7) + esc(catName);
-      parse.querySelector('.p-name').textContent = empty ? 'наименование' : (r.name || catName);
+      pc.classList.toggle('none', !cat);
+      pc.classList.toggle('manual', !!state.smartCat);
+      pc.innerHTML = svg(cat ? cat.icon : 'circle-help', 15, 1.7) + `<span class="p-cat-n">${esc(catLabel)}</span>` + svg('chevron-right', 13, 2);
+      parse.querySelector('.p-name').textContent = empty ? 'наименование' : (r.name || catLabel);
     }
     const note = el.querySelector('.smart-note');
-    if (note) note.textContent = !empty && !r.cat
-      ? 'Категорию назначите один раз в истории, дальше подставится сама.'
+    if (note) note.textContent = !empty && !cat
+      ? 'Категорию можно выбрать прямо здесь или назначить потом в истории.'
       : 'Напишите строкой: сумма и категория определятся сами.';
     const h = el.querySelector('.form-hint');
     if (h) h.textContent = can ? 'готово к внесению' : 'умный ввод';
@@ -582,7 +622,7 @@
     if (savingSmart) return;
     const r = parseSmart(state.smartText);
     if (!(r.amount > 0)) return;
-    const cat = r.cat || noneCat(true);
+    const cat = smartCat(r) || noneCat(true);
     const row = {
       id: Store.uid(), ts: localISO(new Date()), amount: r.amount,
       catId: cat.id, name: r.name || cat.name,
@@ -594,6 +634,7 @@
       bumpEdits();
       persist();
       state.smartText = '';
+      state.smartCat = null;
       rerender();
       M.once(document.getElementById('card-today'), 'nudge');
     };
@@ -1027,6 +1068,7 @@
       case 'done': state.pad = false; rerender(); break;
       case 'save': saveExpense(act); break;
       case 'save-smart': saveSmart(act); break;
+      case 'smart-cat': openSmartCat(); break;
       case 'bk-save': backupSave(act); break;
       case 'row-cat': openRowCat(act.dataset.id); break;
       case 'bk-later': state.data.backupSnooze = dayKey(new Date()); persist(); rerender(); break;
@@ -1075,6 +1117,9 @@
       case 'close-confirm': closeConfirm(); break;
       case 'close-rowcat': closeRowCat(); break;
       case 'close-learned': closeLearned(); break;
+      case 'close-smartcat': closeSmartCat(); break;
+      case 'smartcat-pick': state.smartCat = (state.smartCat === act.dataset.id) ? null : act.dataset.id; closeSmartCat(); rerender(); break;
+      case 'smartcat-auto': state.smartCat = null; closeSmartCat(); rerender(); break;
       case 'rowcat-pick': rowPick.catId = (rowPick.catId === act.dataset.id) ? null : act.dataset.id; drawRowCat(); break;
       case 'rowcat-remember': rowPick.remember = !rowPick.remember; drawRowCat(); break;
       case 'rowcat-save': saveRowCat(); break;
