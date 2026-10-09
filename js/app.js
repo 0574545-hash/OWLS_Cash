@@ -416,34 +416,51 @@
 
   let micSkipClick = false;   // долгое нажатие открыло журнал — щелчок не считаем
 
-  /* ---------- проверка собственной записи (временно) ----------
-     Safari во второй раз держит микрофон, но звук распознавателю не отдаёт.
-     Прежде чем строить свою запись, проверяем на телефоне, что она живая
-     дважды подряд: сами включаем микрофон, пишем до 5 с, меряем громкость
-     по самому звуку и сами отпускаем микрофон. Речь пока не распознаётся. */
-  const MIC_TEST = true;
-  let rt = null, rtN = 0;
+  /* ---------- голос через сервер ИИ ----------
+     Safari на iPhone во второй раз держит микрофон, но звук не отдаёт
+     (доказано журналом). Поэтому пишем звук сами: включаем микрофон,
+     останавливаемся по тишине и сами его отпускаем — проверено на телефоне,
+     дважды подряд звук живой. Запись уходит посреднику как есть, он —
+     GigaAM службы «Речь и текст» по шифрованному входу: по скилу сервера
+     русскую речь он распознаёт лучше Совы, сам ставит знаки и пишет числа
+     цифрами. */
+  const VOICE_MAX = 15000;     // дольше фраза про расход не бывает
+  const VOICE_QUIET = 1200;    // столько тишины после речи — конец фразы
+  const VOICE_NOSPEECH = 6000; // так и не заговорили — бросаем
+  let vc = null, vcN = 0;
+  let voiceDown = false;  // посредник сказал, что голос пока нельзя (нет ключа)
 
-  function recTest() {
-    if (rt) { if (rt.finish) rt.finish(); return; }
-    const n = ++rtN;
-    rt = { finish: null };                       // идёт запуск: второе нажатие не плодит запись
-    /* AudioContext создаём прямо в нажатии: позже iOS оставит его на паузе. */
+  const voiceOn = () => !voiceDown && !!(state.data.sova && state.data.sovaUrl && navigator.mediaDevices && window.MediaRecorder);
+
+  function voiceToggle() {
+    if (vc) { if (vc.finish) vc.finish(); return; }
+    const n = ++vcN;
+    vc = { finish: null };
+    /* AudioContext — прямо в нажатии: позже iOS оставит его на паузе. */
     const AC = window.AudioContext || window.webkitAudioContext;
     let ctx = null;
-    try { ctx = AC ? new AC() : null; if (ctx && ctx.state === 'suspended') ctx.resume(); } catch { ctx = null; }
-    mlog('── запись #' + n + (ctx ? ', звук ' + ctx.state : ', без AudioContext'));
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      mlog('getUserMedia нет'); rt = null; micMiss(); return;
-    }
+    try { ctx = new AC(); if (ctx.state === 'suspended') ctx.resume(); } catch { ctx = null; }
+    micBefore = state.smartText.trim();
+    mlog('── голос #' + n);
     const t0 = performance.now();
     navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-      const tr = stream.getAudioTracks()[0];
-      const st = tr && tr.getSettings ? tr.getSettings() : {};
-      mlog('микрофон дан за ' + Math.round(performance.now() - t0) + ' мс; дорожка ' + (tr ? tr.readyState : '—')
-        + (tr && tr.muted ? ', приглушена' : '') + (st.sampleRate ? ', ' + st.sampleRate + ' Гц' : ''));
+      mlog('микрофон дан за ' + Math.round(performance.now() - t0) + ' мс');
+      const type = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm']
+        .find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || '';
+      const chunks = [];
+      let rec;
+      try {
+        rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+      } catch (e) {
+        mlog('MediaRecorder: ' + e.name); stream.getTracks().forEach(t => t.stop()); vc = null; micMiss(); return;
+      }
+      rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+      rec.start(250);
+      setMic(true);
 
-      let peak = 0, sum = 0, cnt = 0, meter = 0;
+      /* Конец фразы ловим по громкости: заговорили, потом замолчали. */
+      let spoke = false, quietSince = 0, peak = 0, meter = 0;
+      const began = performance.now();
       if (ctx) {
         try {
           const an = ctx.createAnalyser();
@@ -456,60 +473,100 @@
             for (let i = 0; i < buf.length; i++) q += buf[i] * buf[i];
             const rms = Math.sqrt(q / buf.length);
             if (rms > peak) peak = rms;
-            sum += rms; cnt++;
+            const now = performance.now();
+            if (rms > 0.03) { spoke = true; quietSince = 0; }
+            else if (spoke) { if (!quietSince) quietSince = now; else if (now - quietSince > VOICE_QUIET) finish(); }
+            if (!spoke && now - began > VOICE_NOSPEECH) finish();
           }, 100);
-        } catch (e) { mlog('замер громкости: ' + e.name); }
+        } catch (e) { mlog('замер: ' + e.name); }
       }
 
-      const type = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm']
-        .find(t => window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || '';
-      let rec = null;
-      const chunks = [];
-      try {
-        rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
-        rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
-        rec.start(250);
-        mlog('пишу: ' + (rec.mimeType || type || 'формат по умолчанию'));
-      } catch (e) { rec = null; mlog('MediaRecorder: ' + e.name + ' — ' + e.message); }
-
-      setMic(true);
-      const started = performance.now();
-      let done = false, auto = 0;
-      const finish = () => {
+      let done = false;
+      const auto = setTimeout(() => finish(), VOICE_MAX);
+      function finish() {
         if (done) return;
         done = true;
         clearTimeout(auto);
-        const end = () => {
-          clearInterval(meter);
-          const bytes = chunks.reduce((a, b) => a + b.size, 0);
-          stream.getTracks().forEach(t => t.stop());   // отпускаем микрофон сами
-          const after = tr ? tr.readyState : '—';
+        clearInterval(meter);
+        rec.onstop = () => {
+          stream.getTracks().forEach(t => t.stop());   // микрофон отпускаем сами
           if (ctx) { try { ctx.close(); } catch {} }
-          rt = null;
           setMic(false);
-          mlog('записано ' + (bytes / 1024).toFixed(1) + ' КБ за ' + ((performance.now() - started) / 1000).toFixed(1) + ' с');
-          mlog('громкость: пик ' + (peak * 100).toFixed(1) + '%, средняя ' + (cnt ? (sum / cnt * 100).toFixed(1) : '0') + '%');
-          mlog('микрофон после остановки: ' + (after === 'ended' ? 'отпущен' : 'НЕ отпущен (' + after + ')'));
-          mlog(peak > 0.01 ? '✓ звук есть' : '✕ тишина: звук не пришёл');
-          showMicLog();
+          const blob = new Blob(chunks, { type: rec.mimeType || type || 'audio/mp4' });
+          mlog('записано ' + (blob.size / 1024).toFixed(1) + ' КБ, пик ' + (peak * 100).toFixed(1) + '%');
+          if (peak < 0.01) { mlog('✕ тишина'); vc = null; micMiss(); return; }
+          voiceSend(blob, n);
         };
-        if (rec && rec.state !== 'inactive') { rec.onstop = end; try { rec.stop(); } catch { end(); } }
-        else end();
-      };
-      auto = setTimeout(finish, 5000);
-      rt = { finish };
+        try { rec.stop(); } catch { rec.onstop(); }
+      }
+      vc = { finish };
     }).catch(e => {
       mlog('микрофон не дан: ' + e.name + ' — ' + e.message);
       if (ctx) { try { ctx.close(); } catch {} }
-      rt = null;
+      vc = null;
       setMic(false);
       micMiss();
     });
   }
 
+  /* Пока Сова разбирает запись, по низу строки ползёт та же полоска,
+     что при разборе текста. */
+  function voiceSend(blob, n) {
+    setSovaBusy(true);
+    toBase64(blob).then(b64 => {
+      mlog('отправляю ' + (blob.size / 1024).toFixed(0) + ' КБ');
+      const ctl = new AbortController();
+      const stop = setTimeout(() => ctl.abort(), 20000);
+      return fetch(state.data.sovaUrl.replace(/\/+$/, ''), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: ctl.signal,
+        body: JSON.stringify({ audio: b64, type: (blob.type || 'audio/mp4').split(';')[0] })
+      }).finally(() => clearTimeout(stop));
+    }).then(r => r.json().then(d => ({ ok: r.ok, d }))).then(({ ok, d }) => {
+      vc = null;
+      setSovaBusy(false);
+      if (!ok || !d || typeof d.text !== 'string') {
+        const err = (d && d.error) || 'ошибка';
+        mlog('посредник: ' + err);
+        /* Голос к Сове пока закрыт — до конца сеанса слушаем через Safari. */
+        if (err === 'voice_needs_https' || err === 'sova_key') { voiceDown = true; mlog('дальше — распознавание Safari'); }
+        micMiss();
+        return;
+      }
+      const said = d.text.trim();
+      mlog('#' + n + ' распознано: ' + (said ? '«' + said.slice(0, 40) + '»' : 'пусто'));
+      if (!said) { micMiss(); return; }
+      micHeard = true;
+      state.smartText = micBefore ? micBefore + ' ' + said : said;
+      const el = state.tab === 'today' ? currentScreen() : null;
+      if (!el) return;
+      const si = el.querySelector('#smart-in');
+      if (si) si.value = state.smartText;
+      patchSmart(el);
+      sovaSchedule(state.smartText);
+    }).catch(e => {
+      vc = null;
+      setSovaBusy(false);
+      mlog('отправка: ' + (e && e.name));
+      micMiss();
+    });
+  }
+
+  function toBase64(blob) {
+    return blob.arrayBuffer().then(ab => {
+      const bytes = new Uint8Array(ab);
+      let bin = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      return btoa(bin);
+    });
+  }
+
   function micToggle() {
     if (micSkipClick) { micSkipClick = false; return; }
-    if (MIC_TEST) { recTest(); return; }
+    /* Разбор через Сову включён — голос пишем сами и отдаём ей. Иначе —
+       распознавание Safari: на iPhone оно слышит только в первый раз. */
+    if (voiceOn()) { voiceToggle(); return; }
     mlog('нажатие: запись ' + (state.mic ? 'идёт' : 'нет') + (micStarting ? ', запуск идёт' : '') + ', текст ' + (micHeard ? 'был' : 'не был'));
     /* Остановили сами, а текста так и не было — это тоже неудача: показываем журнал. */
     if (state.mic || micStarting) { stopMic(!micHeard); return; }

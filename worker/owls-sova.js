@@ -10,6 +10,8 @@
  *   1. dash.cloudflare.com → Workers & Pages → Create → Worker, вставить этот файл.
  *   2. Settings → Variables: SOVA_URL — вход к Сове: https://<адрес>:8443/ollama
  *                            SOVA_KEY — ключ проекта для HTTPS-входа (выдаёт владелец сервера)
+ *                            SPEECH_URL — https://<адрес>:8443/speech, распознавание речи
+ *                            SPEECH_KEY — ключ службы речи (идёт в Authorization: Bearer)
  *                            PATH_TOKEN — случайная строка, она же путь метода
  *                            ALLOW_ORIGINS = https://0574545-hash.github.io
  *      Адрес сервера задаётся только здесь и в репозиторий не попадает.
@@ -35,6 +37,7 @@ const SYSTEM = `Ты разбираешь короткую запись о ра�
 - Ничего не добавляй от себя: чего нет в записи, того нет в ответе.`;
 
 const MAX_TEXT = 200;
+const MAX_AUDIO = 2_000_000; // base64 записи с телефона — с большим запасом для фразы
 const MAX_CATS = 40;
 const SOVA_TIMEOUT_MS = 12000;
 
@@ -57,6 +60,23 @@ export default {
       body = await request.json();
     } catch {
       return json({ error: 'bad_json' }, 400, cors);
+    }
+
+    /* Голос: запись WAV в base64. По правилам сервера голос — только по
+       шифрованному каналу, поэтому без HTTPS-входа отказываемся сразу. */
+    if (typeof body?.audio === 'string') {
+      if (!/^https:/i.test(env.SPEECH_URL || '')) return json({ error: 'voice_needs_https' }, 503, cors);
+      if (!body.audio || body.audio.length > MAX_AUDIO) return json({ error: 'bad_audio' }, 400, cors);
+      const type = /^audio\/[a-z0-9.+-]+$/i.test(body.type || '') ? body.type : 'application/octet-stream';
+      let said;
+      try {
+        said = await askSpeech(env, body.audio, type);
+      } catch (e) {
+        const code = e.message === 'timeout' ? 'timeout' : e.message === 'http_401' ? 'sova_key' : 'sova_unavailable';
+        return json({ error: code }, 503, cors);
+      }
+      const text = String(said || '').replace(/^["«»\s]+|["«»\s]+$/g, '').slice(0, MAX_TEXT);
+      return json({ text }, 200, cors);
     }
 
     const text = String(body?.text ?? '').trim().slice(0, MAX_TEXT);
@@ -139,6 +159,38 @@ async function askSova(baseUrl, text, categories, key) {
     if (status !== 200) throw new Error('http_' + status);
     const data = JSON.parse(text2);
     return data?.message?.content ?? '';
+  } catch (e) {
+    throw new Error(/^http_/.test(e.message) ? e.message : 'unavailable');
+  } finally {
+    clearTimeout(timer);
+    try { await socket.close(); } catch {}
+  }
+}
+
+/* Распознавание русской речи — GigaAM службы «Речь и текст» через HTTPS-вход
+   (/speech). Два ключа: X-Api-Key — ключ входа, Authorization — ключ службы
+   речи. Запись с телефона уходит как есть: служба сама разбирает mp4/webm. */
+async function askSpeech(env, b64, type) {
+  const audio = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  const { secure, hostname, port, prefix } = parseEndpoint(env.SPEECH_URL);
+  const head =
+    `POST ${prefix}/v1/stt HTTP/1.1\r\n` +
+    `Host: ${hostname}:${port}\r\n` +
+    (env.SOVA_KEY ? `X-Api-Key: ${env.SOVA_KEY}\r\n` : '') +
+    (env.SPEECH_KEY ? `Authorization: Bearer ${env.SPEECH_KEY}\r\n` : '') +
+    `Content-Type: ${type}\r\n` +
+    `Content-Length: ${audio.length}\r\n` +
+    'Connection: close\r\n\r\n';
+  const socket = connect({ hostname, port }, secure ? { secureTransport: 'on' } : undefined);
+  const timer = setTimeout(() => socket.close().catch(() => {}), 30000);
+  try {
+    const writer = socket.writable.getWriter();
+    await writer.write(new TextEncoder().encode(head));
+    await writer.write(audio);
+    writer.releaseLock();
+    const { status, body } = parseHttp(await readAll(socket.readable));
+    if (status !== 200) throw new Error('http_' + status);
+    return JSON.parse(body).text || '';
   } catch (e) {
     throw new Error(/^http_/.test(e.message) ? e.message : 'unavailable');
   } finally {
