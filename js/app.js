@@ -557,6 +557,7 @@
 
   function sovaForget() {
     clearTimeout(sovaTimer);
+    if (sovaCtl) { sovaCtl.abort(); sovaCtl = null; }
     sovaSeq++;
     state.sovaRes = null;
     setSovaBusy(false);
@@ -579,10 +580,17 @@
     sovaTimer = setTimeout(() => sovaAsk(src), SOVA_IDLE);
   }
 
+  /* Сервер Совы общий для всех проектов компании: больше двух запросов разом
+     с одного места слать нельзя. Новый запрос отменяет прежний — он уже не
+     о той строке, и держать его на сервере незачем. */
+  let sovaCtl = null;
+
   function sovaAsk(src) {
     const seq = ++sovaSeq;
     setSovaBusy(true);
+    if (sovaCtl) sovaCtl.abort();
     const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+    sovaCtl = ctl;
     const stop = setTimeout(() => { if (ctl) ctl.abort(); }, SOVA_WAIT);
     const done = () => { clearTimeout(stop); if (seq === sovaSeq) setSovaBusy(false); };
     fetch(state.data.sovaUrl.replace(/\/+$/, ''), {

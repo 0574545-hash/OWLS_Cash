@@ -8,7 +8,8 @@
  *
  * Выкладка:
  *   1. dash.cloudflare.com → Workers & Pages → Create → Worker, вставить этот файл.
- *   2. Settings → Variables: SOVA_URL — адрес сервера ИИ с портом
+ *   2. Settings → Variables: SOVA_URL — вход к Сове: https://<адрес>:8443/ollama
+ *                            SOVA_KEY — ключ проекта для HTTPS-входа (выдаёт владелец сервера)
  *                            PATH_TOKEN — случайная строка, она же путь метода
  *                            ALLOW_ORIGINS = https://0574545-hash.github.io
  *      Адрес сервера задаётся только здесь и в репозиторий не попадает.
@@ -67,11 +68,13 @@ export default {
 
     let reply;
     try {
-      reply = await askSova(env.SOVA_URL, text, categories);
+      reply = await askSova(env.SOVA_URL, text, categories, env.SOVA_KEY);
     } catch (e) {
       // Сервер ИИ выключен или не успел ответить: приложение молча вернётся
       // к разбору на устройстве, поэтому код ошибки важнее текста.
-      return json({ error: e.message === 'timeout' ? 'timeout' : 'sova_unavailable' }, 503, cors);
+      // 401 — ключ не подошёл: повторять бессмысленно, это к владельцу сервера.
+      const code = e.message === 'timeout' ? 'timeout' : e.message === 'http_401' ? 'sova_key' : 'sova_unavailable';
+      return json({ error: code }, 503, cors);
     }
 
     const parsed = extractJson(reply);
@@ -92,8 +95,8 @@ export default {
    на голый IP Cloudflare отбивает своей же ошибкой 1003, до сервера запрос
    не доходит. Сокет такого ограничения не имеет, и адрес остаётся в секрете —
    заводить ради этого публичное доменное имя для Совы не нужно. */
-async function askSova(baseUrl, text, categories) {
-  const { hostname, port } = parseEndpoint(baseUrl);
+async function askSova(baseUrl, text, categories, key) {
+  const { secure, hostname, port, prefix } = parseEndpoint(baseUrl);
   const payload = JSON.stringify({
     model: 'sova',
     stream: false,
@@ -111,15 +114,19 @@ async function askSova(baseUrl, text, categories) {
     ],
   });
   const body = new TextEncoder().encode(payload);
-  /* Origin не шлём: Ollama отвечает 403 на любой источник не из своего списка. */
+  /* Origin не шлём: Ollama отвечает 403 на любой источник не из своего списка.
+     Ключ — только в заголовке и только из секрета воркера. */
   const head =
-    'POST /api/chat HTTP/1.1\r\n' +
+    `POST ${prefix}/api/chat HTTP/1.1\r\n` +
     `Host: ${hostname}:${port}\r\n` +
+    (key ? `X-Api-Key: ${key}\r\n` : '') +
     'Content-Type: application/json\r\n' +
     `Content-Length: ${body.length}\r\n` +
     'Connection: close\r\n\r\n';
 
-  const socket = connect({ hostname, port });
+  /* HTTPS-вход шифруем: сертификат Let's Encrypt выписан на сам адрес,
+     среда воркера проверяет его сама — отключать проверку нельзя. */
+  const socket = connect({ hostname, port }, secure ? { secureTransport: 'on' } : undefined);
   const timer = setTimeout(() => socket.close().catch(() => {}), SOVA_TIMEOUT_MS);
   try {
     const writer = socket.writable.getWriter();
@@ -140,11 +147,17 @@ async function askSova(baseUrl, text, categories) {
   }
 }
 
-/** Разбирает `http://адрес:порт` на части; порт по умолчанию 80. */
+/** Разбирает `https://адрес:порт/путь` на части. */
 function parseEndpoint(url) {
-  const m = String(url || '').match(/^https?:\/\/([^/:]+)(?::(\d+))?/i);
+  const m = String(url || '').match(/^(https?):\/\/([^/:]+)(?::(\d+))?(\/[^?#]*)?/i);
   if (!m) throw new Error('unavailable');
-  return { hostname: m[1], port: Number(m[2] || 80) };
+  const secure = m[1].toLowerCase() === 'https';
+  return {
+    secure,
+    hostname: m[2],
+    port: Number(m[3] || (secure ? 443 : 80)),
+    prefix: (m[4] || '').replace(/\/+$/, ''),
+  };
 }
 
 async function readAll(readable) {
