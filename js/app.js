@@ -304,46 +304,40 @@
      кнопку не показываем: мёртвая кнопка хуже её отсутствия. */
   const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
   const micOk = () => !!Rec;
-  const MIC_LIMIT = 15000;  // сам закроется: открытый микрофон забывать нельзя
-  let rec = null, micStarting = false, micTimer = 0;
+  const MIC_LIMIT = 15000;   // сам закроется: открытый микрофон забывать нельзя
+  const MIC_WATCH = 1500;    // столько ждём открытия, дальше считаем сбоем
+  const MIC_WATCH_1 = 20000; // в первый раз iOS спрашивает разрешение: человек читает
+  let recObj = null;         // распознаватель один на всё: Safari не любит новые
+  let micStarting = false, micHeard = false, micBefore = '';
+  let micEverStarted = false; // был ли хоть один удачный сеанс
+  let micTimer = 0, micWatch = 0;
 
-  function micToggle() {
-    if (state.mic || micStarting) { stopMic(); return; }
-    if (!micOk()) return;
-    let r;
-    try {
-      r = new Rec();
-    } catch { return; }
-    rec = r;
+  function makeRec() {
+    const r = new Rec();
     r.lang = 'ru-RU';
     r.interimResults = true;
     /* Не обрываемся на первой паузе: «тысяча… кафе с семьёй» — одна фраза. */
     r.continuous = true;
 
-    /* Текст, который был до начала записи: распознанное дописываем к нему,
-       иначе повторное нажатие стирало бы уже введённое. */
-    const before = state.smartText.trim();
-    let heard = false;
-
-    /* Загораемся только когда микрофон действительно открыт. Раньше кнопка
-       зажигалась сразу после start(), человек начинал говорить в ещё не
-       открытый микрофон и начало фразы пропадало. */
+    /* Загораемся, только когда микрофон действительно открыт: иначе человек
+       говорит в ещё не открытый микрофон и начало фразы пропадает. */
     r.onstart = () => {
-      if (rec !== r) return;
       micStarting = false;
+      micEverStarted = true;
+      clearTimeout(micWatch);
       setMic(true);
       clearTimeout(micTimer);
       micTimer = setTimeout(() => stopMic(), MIC_LIMIT);
     };
 
     r.onresult = e => {
-      if (rec !== r) return;
+      if (!state.mic && !micStarting) return;
       let said = '';
       for (let i = 0; i < e.results.length; i++) said += e.results[i][0].transcript;
       said = said.trim();
       if (!said) return;
-      heard = true;
-      state.smartText = before ? before + ' ' + said : said;
+      micHeard = true;
+      state.smartText = micBefore ? micBefore + ' ' + said : said;
       const el = state.tab === 'today' ? currentScreen() : null;
       if (!el) return;
       const si = el.querySelector('#smart-in');
@@ -354,39 +348,81 @@
     };
 
     r.onerror = ev => {
-      if (rec !== r) return;
-      /* aborted — это наш же вызов abort при перезапуске, молчим. */
-      if (ev && ev.error === 'aborted') return;
-      stopMic(!heard);
+      const err = ev && ev.error;
+      if (err === 'aborted') return;   // это наш же вызов при перезапуске
+      micFinish(!micHeard);
     };
-    r.onend = () => {
-      if (rec !== r) return;
-      /* Ничего не разобрали — показываем это, иначе кнопка просто гаснет
-         и непонятно, не услышала она или не запустилась. */
-      stopMic(!heard);
-    };
-
-    micStarting = true;
-    try {
-      r.start();
-    } catch {
-      micStarting = false;
-      rec = null;
-    }
+    r.onend = () => micFinish(!micHeard);
+    return r;
   }
 
-  function stopMic(miss) {
-    clearTimeout(micTimer);
-    micStarting = false;
-    if (rec) {
-      const r = rec;
-      rec = null;
-      /* abort, а не stop: stop закрывается не сразу, и следующее нажатие
-         налетало на ещё живой разбор — запуск молча срывался. */
-      try { r.abort(); } catch { try { r.stop(); } catch {} }
+  function micToggle() {
+    if (state.mic || micStarting) { stopMic(); return; }
+    if (!micOk()) return;
+    /* Текст, который был до начала записи: распознанное дописываем к нему. */
+    micBefore = state.smartText.trim();
+    micHeard = false;
+    micStart(false);
+  }
+
+  /* Второй сеанс подряд Safari иногда не открывает: либо бросает ошибку на
+     start, либо молчит — ни onstart, ни onerror. Поэтому отпускаем прежний
+     распознаватель и пробуем ещё раз; не вышло и со второй — мигаем. */
+  function micStart(retry) {
+    if (!recObj) recObj = makeRec();
+    micStarting = true;
+    try {
+      recObj.start();
+    } catch {
+      micStarting = false;
+      if (retry) { micFail(); return; }
+      micRecycle();
+      setTimeout(() => micStart(true), 260);
+      return;
     }
+    clearTimeout(micWatch);
+    micWatch = setTimeout(() => {
+      if (state.mic) return;          // всё-таки открылся
+      micStarting = false;
+      micRecycle();
+      if (retry) micFail(); else micStart(true);
+    }, micEverStarted ? MIC_WATCH : MIC_WATCH_1);
+  }
+
+  function micRecycle() {
+    if (!recObj) return;
+    const r = recObj;
+    recObj = null;
+    r.onstart = r.onresult = r.onerror = r.onend = null;
+    try { r.abort(); } catch {}
+  }
+
+  function micFail() {
+    clearTimeout(micWatch);
+    micStarting = false;
     setMic(false);
-    if (miss) micMiss();
+    micMiss();
+  }
+
+  /* Сеанс закончился сам: микрофон уже закрыт, трогать распознаватель не надо. */
+  function micFinish(miss) {
+    clearTimeout(micWatch);
+    clearTimeout(micTimer);
+    const was = state.mic || micStarting;
+    micStarting = false;
+    setMic(false);
+    if (was && miss) micMiss();
+  }
+
+  /* Останавливаем мы: завершаем мягко, abort на iPhone ломает следующий сеанс. */
+  function stopMic(miss) {
+    clearTimeout(micWatch);
+    clearTimeout(micTimer);
+    const was = state.mic || micStarting;
+    micStarting = false;
+    setMic(false);
+    if (recObj && was) { try { recObj.stop(); } catch {} }
+    if (was && miss) micMiss();
   }
 
   /* Мигание кнопки: меняем только цвет, сдвиг сбил бы её с места. */
