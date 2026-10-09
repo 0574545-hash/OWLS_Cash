@@ -274,14 +274,33 @@
     return { amount, cat, name, learnedHit, raw: src };
   }
 
-  /* Какие слова записи стоит запомнить: те, что сейчас ничем не узнаются. */
-  function learnCandidates(name) {
-    const live = orderedCats().filter(c => !c.sys);
-    return textWords(name).filter(w => {
-      if (live.some(c => textWords(c.name).some(cw => wordsMatch(cw, w)))) return false;
-      if (Object.entries(HINTS).some(([n, keys]) => keys.some(k => wordsMatch(k, w)) && catByName(n))) return false;
-      return true;
-    });
+  /* Куда слово попадёт само, без обучения. */
+  function autoCatForWord(w) {
+    for (const key of Object.keys(state.data.learned)) {
+      if (!wordsMatch(w, key)) continue;
+      const c = catById(state.data.learned[key]);
+      if (c && !c.sys) return c;
+    }
+    for (const c of orderedCats()) {
+      if (!c.sys && textWords(c.name).some(cw => wordsMatch(cw, w))) return c;
+    }
+    for (const [n, keys] of Object.entries(HINTS)) {
+      if (!keys.some(k => wordsMatch(k, w))) continue;
+      const c = catByName(n);
+      if (c) return c;
+    }
+    return null;
+  }
+
+  /* Какие слова стоит запомнить за выбранной категорией.
+     Сначала те, что сейчас не узнаются вовсе, потом те, что уводят не туда:
+     иначе «продукты» нельзя было бы переучить на другую категорию. */
+  function learnCandidates(name, targetId) {
+    const ws = textWords(name);
+    const unknown = ws.filter(w => !autoCatForWord(w));
+    if (unknown.length) return unknown;
+    if (!targetId) return [];
+    return ws.filter(w => { const c = autoCatForWord(w); return c && c.id !== targetId; });
   }
 
   /* ---------- экран «Сегодня» ---------- */
@@ -389,12 +408,26 @@
           </div>
           <div class="p-name">${empty ? 'наименование' : esc(r.name || catLabel)}</div>
         </div>
-        <div class="smart-note">${!empty && !cat
-          ? 'Категорию можно выбрать прямо здесь или назначить потом в истории.'
-          : 'Напишите строкой: сумма и категория определятся сами.'}</div>
+        <div class="smart-note">${smartNote(r, cat, empty)}</div>
       </div>
       <button type="button" class="commit big${can ? ' on' : ''}" data-act="save-smart" aria-disabled="${!can}">${svg('plus', 20, 2.3)}Внести расход</button>
     </div>`;
+  }
+
+  /* Слово, которое запомнится при внесении с выбранной руками категорией. */
+  function smartLearnWord(r) {
+    if (!state.smartCat) return '';
+    const cat = catById(state.smartCat);
+    if (!cat || cat.sys) return '';
+    if (r.cat && r.cat.id === cat.id) return '';
+    return learnCandidates(r.name, cat.id)[0] || '';
+  }
+
+  function smartNote(r, cat, empty) {
+    const word = smartLearnWord(r);
+    if (word) return `Запомню «${word}» как ${catById(state.smartCat).name}.`;
+    if (!empty && !cat) return 'Категорию можно выбрать прямо здесь или назначить потом в истории.';
+    return 'Напишите строкой: сумма и категория определятся сами.';
   }
 
   /* Выбор категории прямо из строки разбора. */
@@ -444,9 +477,7 @@
       parse.querySelector('.p-name').textContent = empty ? 'наименование' : (r.name || catLabel);
     }
     const note = el.querySelector('.smart-note');
-    if (note) note.textContent = !empty && !cat
-      ? 'Категорию можно выбрать прямо здесь или назначить потом в истории.'
-      : 'Напишите строкой: сумма и категория определятся сами.';
+    if (note) note.textContent = smartNote(r, cat, empty);
     const h = el.querySelector('.form-hint');
     if (h) h.textContent = can ? 'готово к внесению' : 'умный ввод';
     const c = el.querySelector('.commit');
@@ -622,6 +653,7 @@
     const r = parseSmart(state.smartText);
     if (!(r.amount > 0)) return;
     const cat = smartCat(r) || noneCat(true);
+    const learnWord = smartLearnWord(r);
     const row = {
       id: Store.uid(), ts: localISO(new Date()), amount: r.amount,
       catId: cat.id, name: r.name || cat.name,
@@ -630,6 +662,7 @@
     const commit = () => {
       savingSmart = false;
       state.data.expenses.unshift(row);
+      if (learnWord) state.data.learned[learnWord] = cat.id;
       bumpEdits();
       persist();
       state.smartText = '';
@@ -941,8 +974,7 @@
   function openRowCat(id) {
     const e = state.data.expenses.find(x => x.id === id);
     if (!e) return;
-    const words = learnCandidates(e.name);
-    rowPick = { id, catId: isUnsorted(e) ? null : e.catId, word: words[0] || '', remember: !!words[0] };
+    rowPick = { id, catId: isUnsorted(e) ? null : e.catId, remember: true };
     drawRowCat();
   }
   function drawRowCat() {
@@ -953,6 +985,7 @@
     let i = 0;
     for (const size of honeyRows(cats.length)) { rows.push(cats.slice(i, i + size)); i += size; }
     const target = rowPick.catId ? catById(rowPick.catId) : null;
+    rowPick.word = learnCandidates(e.name, rowPick.catId)[0] || '';
     sheetHost.innerHTML = `<div class="sheet-wrap">
       <div class="dim" data-act="close-rowcat"></div>
       <div class="sheet" role="dialog" aria-modal="true" aria-label="Категория записи">
