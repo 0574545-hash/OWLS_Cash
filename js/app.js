@@ -410,7 +410,7 @@
         </div>
         <div class="smart-note">${smartNote(r, cat, empty)}</div>
       </div>
-      <button type="button" class="commit big${can ? ' on' : ''}" data-act="save-smart" aria-disabled="${!can}">${svg('plus', 20, 2.3)}Внести расход</button>
+      <button type="button" class="commit${can ? ' on' : ''}" data-act="save-smart" aria-disabled="${!can}">${svg('plus', 20, 2.3)}Внести расход</button>
     </div>`;
   }
 

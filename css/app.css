@@ -73,10 +73,10 @@
 
 .name-input{background:#fff;border-color:var(--line);height:auto;padding:12px 15px;line-height:1.3}
 
-.commit{height:54px;width:100%;border-radius:var(--r-big);display:flex;align-items:center;justify-content:center;gap:9px;font:700 15px var(--body);background:var(--bg);color:var(--sand);border:1px solid var(--line);cursor:default;transition:transform var(--t-press) var(--ease-out),background-color var(--t-base),color var(--t-base),box-shadow var(--t-base),border-color var(--t-base)}
-.commit.on{background:var(--accent);color:#fff;border-color:transparent;box-shadow:var(--shadow-accent);cursor:pointer}
+.commit{height:58px;width:100%;border-radius:var(--r-big);display:flex;align-items:center;justify-content:center;gap:9px;font:700 15px var(--body);background:var(--bg);color:var(--sand);border:1px solid var(--line);cursor:default;transition:transform var(--t-press) var(--ease-out),background-color var(--t-base),color var(--t-base),box-shadow var(--t-base),border-color var(--t-base)}
+.commit.on{background:linear-gradient(180deg,#F57048 0%,#EE5A2C 100%);color:#fff;border-color:transparent;box-shadow:0 10px 22px rgba(242,99,54,.34), inset 0 1px 0 rgba(255,255,255,.22);cursor:pointer}
 @media (hover:hover){.commit.on:hover{background:var(--accent-dark)}}
-.commit.on:active{background:var(--accent-dark);transform:scale(.93);transition-duration:60ms}
+.commit.on:active{background:var(--accent-dark);box-shadow:0 3px 10px rgba(242,99,54,.3), inset 0 1px 0 rgba(255,255,255,.14);transform:translateY(2px) scale(.985);transition-duration:60ms}
 
 /* Подтверждение внесения: кнопка проседает и упруго возвращается,
    галочка дорисовывается. Через 300ms запись уходит в список. */
@@ -250,20 +250,21 @@
 .parse-top{display:flex;align-items:center;gap:10px;min-width:0}
 .p-sum{font:800 19px var(--display);color:var(--ink);letter-spacing:-.03em;white-space:nowrap;font-variant-numeric:tabular-nums}
 .p-sum i{font:400 12px var(--display);color:var(--accent);font-style:normal;padding-left:2px}
-.p-cat{display:inline-flex;align-items:center;gap:5px;min-width:0;max-width:62%;padding:5px 7px 5px 9px;margin:-5px -7px -5px -9px;border-radius:var(--r-chip);font:600 12.5px var(--body);color:var(--accent);white-space:nowrap;transition:background-color var(--t-base),transform var(--t-press) var(--ease-out)}
+.p-cat{position:relative;display:inline-flex;align-items:center;gap:5px;min-width:0;max-width:62%;padding:5px 7px 5px 9px;margin:-5px -7px -5px -9px;border-radius:var(--r-chip);font:600 12.5px var(--body);color:var(--accent);white-space:nowrap;background:var(--accent-soft);transition:background-color var(--t-base),transform var(--t-press) var(--ease-out)}
+/* Зона касания 44px: сам чип остаётся 28px, растёт только область нажатия. */
+.p-cat::before{content:'';position:absolute;inset:-8px -6px}
+.p-cat .p-cat-n{color:var(--ink)}
 .p-cat .p-cat-n{overflow:hidden;text-overflow:ellipsis}
 .p-cat svg:last-child{color:var(--sand);flex:none}
-.p-cat.none{color:var(--muted)}
-.p-cat.manual{background:var(--accent-soft)}
+.p-cat.none{color:var(--muted);background:transparent;border:1px dashed var(--sand)}
+.p-cat.none .p-cat-n{color:var(--muted)}
+.p-cat.manual{background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
 .p-cat:active{background:var(--accent-soft);transform:scale(.95);transition-duration:60ms}
 @media (hover:hover){.p-cat:hover{background:var(--accent-soft)}}
 .parse.idle .p-cat svg:last-child{color:var(--faint)}
 .p-name{font:500 12px var(--body);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.parse.idle .p-sum,.parse.idle .p-sum i,.parse.idle .p-cat,.parse.idle .p-name{color:var(--faint)}
-/* Кнопка внесения в умном вводе: выше и с объёмом, это главное действие. */
-.commit.big{height:58px;font-size:15.5px}
-.commit.big.on{box-shadow:0 10px 22px rgba(242,99,54,.34), inset 0 1px 0 rgba(255,255,255,.22);background:linear-gradient(180deg,#F57048 0%,#EE5A2C 100%)}
-.commit.big.on:active{box-shadow:0 3px 10px rgba(242,99,54,.3), inset 0 1px 0 rgba(255,255,255,.14);transform:translateY(2px) scale(.985)}
+.parse.idle .p-sum,.parse.idle .p-sum i,.parse.idle .p-cat,.parse.idle .p-cat .p-cat-n,.parse.idle .p-name{color:var(--faint)}
+.parse.idle .p-cat{background:transparent}
 .smart-note{min-height:34px;font:500 11.5px var(--body);color:var(--faint);line-height:1.45}
 
 /* строка истории без категории */
