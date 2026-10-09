@@ -315,7 +315,7 @@
      кнопку не показываем: мёртвая кнопка хуже её отсутствия. */
   const APP_V = (document.querySelector('script[src*="app.js"]')?.src.match(/v=(\d+)/) || [])[1] || '?';
   const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const micOk = () => !!Rec;
+  const micOk = () => !!Rec || !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
   const MIC_LIMIT = 15000;   // сам закроется: открытый микрофон забывать нельзя
   const MIC_WATCH = 1500;    // столько ждём открытия, дальше считаем сбоем
   const MIC_WATCH_1 = 20000; // в первый раз iOS спрашивает разрешение: человек читает
@@ -416,8 +416,100 @@
 
   let micSkipClick = false;   // долгое нажатие открыло журнал — щелчок не считаем
 
+  /* ---------- проверка собственной записи (временно) ----------
+     Safari во второй раз держит микрофон, но звук распознавателю не отдаёт.
+     Прежде чем строить свою запись, проверяем на телефоне, что она живая
+     дважды подряд: сами включаем микрофон, пишем до 5 с, меряем громкость
+     по самому звуку и сами отпускаем микрофон. Речь пока не распознаётся. */
+  const MIC_TEST = true;
+  let rt = null, rtN = 0;
+
+  function recTest() {
+    if (rt) { if (rt.finish) rt.finish(); return; }
+    const n = ++rtN;
+    rt = { finish: null };                       // идёт запуск: второе нажатие не плодит запись
+    /* AudioContext создаём прямо в нажатии: позже iOS оставит его на паузе. */
+    const AC = window.AudioContext || window.webkitAudioContext;
+    let ctx = null;
+    try { ctx = AC ? new AC() : null; if (ctx && ctx.state === 'suspended') ctx.resume(); } catch { ctx = null; }
+    mlog('── запись #' + n + (ctx ? ', звук ' + ctx.state : ', без AudioContext'));
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      mlog('getUserMedia нет'); rt = null; micMiss(); return;
+    }
+    const t0 = performance.now();
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+      const tr = stream.getAudioTracks()[0];
+      const st = tr && tr.getSettings ? tr.getSettings() : {};
+      mlog('микрофон дан за ' + Math.round(performance.now() - t0) + ' мс; дорожка ' + (tr ? tr.readyState : '—')
+        + (tr && tr.muted ? ', приглушена' : '') + (st.sampleRate ? ', ' + st.sampleRate + ' Гц' : ''));
+
+      let peak = 0, sum = 0, cnt = 0, meter = 0;
+      if (ctx) {
+        try {
+          const an = ctx.createAnalyser();
+          an.fftSize = 2048;
+          ctx.createMediaStreamSource(stream).connect(an);
+          const buf = new Float32Array(an.fftSize);
+          meter = setInterval(() => {
+            an.getFloatTimeDomainData(buf);
+            let q = 0;
+            for (let i = 0; i < buf.length; i++) q += buf[i] * buf[i];
+            const rms = Math.sqrt(q / buf.length);
+            if (rms > peak) peak = rms;
+            sum += rms; cnt++;
+          }, 100);
+        } catch (e) { mlog('замер громкости: ' + e.name); }
+      }
+
+      const type = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm']
+        .find(t => window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || '';
+      let rec = null;
+      const chunks = [];
+      try {
+        rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+        rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+        rec.start(250);
+        mlog('пишу: ' + (rec.mimeType || type || 'формат по умолчанию'));
+      } catch (e) { rec = null; mlog('MediaRecorder: ' + e.name + ' — ' + e.message); }
+
+      setMic(true);
+      const started = performance.now();
+      let done = false, auto = 0;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(auto);
+        const end = () => {
+          clearInterval(meter);
+          const bytes = chunks.reduce((a, b) => a + b.size, 0);
+          stream.getTracks().forEach(t => t.stop());   // отпускаем микрофон сами
+          const after = tr ? tr.readyState : '—';
+          if (ctx) { try { ctx.close(); } catch {} }
+          rt = null;
+          setMic(false);
+          mlog('записано ' + (bytes / 1024).toFixed(1) + ' КБ за ' + ((performance.now() - started) / 1000).toFixed(1) + ' с');
+          mlog('громкость: пик ' + (peak * 100).toFixed(1) + '%, средняя ' + (cnt ? (sum / cnt * 100).toFixed(1) : '0') + '%');
+          mlog('микрофон после остановки: ' + (after === 'ended' ? 'отпущен' : 'НЕ отпущен (' + after + ')'));
+          mlog(peak > 0.01 ? '✓ звук есть' : '✕ тишина: звук не пришёл');
+          showMicLog();
+        };
+        if (rec && rec.state !== 'inactive') { rec.onstop = end; try { rec.stop(); } catch { end(); } }
+        else end();
+      };
+      auto = setTimeout(finish, 5000);
+      rt = { finish };
+    }).catch(e => {
+      mlog('микрофон не дан: ' + e.name + ' — ' + e.message);
+      if (ctx) { try { ctx.close(); } catch {} }
+      rt = null;
+      setMic(false);
+      micMiss();
+    });
+  }
+
   function micToggle() {
     if (micSkipClick) { micSkipClick = false; return; }
+    if (MIC_TEST) { recTest(); return; }
     mlog('нажатие: запись ' + (state.mic ? 'идёт' : 'нет') + (micStarting ? ', запуск идёт' : '') + ', текст ' + (micHeard ? 'был' : 'не был'));
     /* Остановили сами, а текста так и не было — это тоже неудача: показываем журнал. */
     if (state.mic || micStarting) { stopMic(!micHeard); return; }
