@@ -37,7 +37,7 @@
 .num .n{font:800 25px var(--display);color:var(--ink);letter-spacing:-.04em;line-height:1;white-space:nowrap;font-variant-numeric:tabular-nums}
 .num .rub{font:400 13px var(--display);padding-top:2px;color:var(--muted)}
 .num .rub.accent{color:var(--accent)}
-.sum .sub{font:500 11px var(--body);color:var(--muted)}
+.sum .sub{font:500 11px var(--body);color:var(--muted);font-variant-numeric:tabular-nums}
 .sum.compact .n{font-size:21px}
 
 /* ---------- карточка «Новый расход» ---------- */
@@ -206,12 +206,12 @@
 #splash.play .s-eyebrow{animation:s-eb calc(.2s + var(--step)) ease both}
 #splash.play .s-ln{animation:s-swap var(--step) ease both .2s}
 #splash.play .s-ph2{animation:s-show .01s linear forwards calc(.25s + var(--step))}
-#splash.play .s-owl{animation:s-owl .55s cubic-bezier(.2,.9,.3,1.35) both calc(.25s + var(--step))}
+#splash.play .s-owl{animation:s-owl .55s var(--ease-out) both calc(.25s + var(--step))}
 #splash.play .s-wm{animation:s-wm .45s var(--ease-out) both calc(.45s + var(--step))}
 @keyframes s-eb{0%{opacity:0;transform:translateY(6px)}8%,92%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-8px)}}
 @keyframes s-swap{0%{opacity:0;transform:translateY(12px)}20%,78%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-12px)}}
 @keyframes s-show{to{opacity:1}}
-@keyframes s-owl{0%{opacity:0;transform:scale(.7)}60%{opacity:1;transform:scale(1.06)}100%{opacity:1;transform:scale(1)}}
+@keyframes s-owl{0%{opacity:0;transform:scale(.88)}100%{opacity:1;transform:scale(1)}}
 @keyframes s-wm{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){#splash .s-ph1{display:none}#splash .s-ph2,#splash .s-owl,#splash .s-wm{opacity:1!important}}
 

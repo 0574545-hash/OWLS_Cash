@@ -72,7 +72,18 @@ img{max-width:100%;display:block}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;text-align:left;-webkit-appearance:none;appearance:none}
 button:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 input,textarea{font-family:var(--body);color:var(--ink)}
-input::placeholder{color:var(--faint)}
+input::placeholder{color:var(--muted);opacity:1}
+
+/* Поверхности браузера тоже часть оформления: выделение, каретка, полоса
+   прокрутки по умолчанию приходят синими и чужими тёплой палитре. */
+::selection{background:var(--accent-soft);color:var(--ink)}
+::-moz-selection{background:var(--accent-soft);color:var(--ink)}
+input,textarea{caret-color:var(--accent)}
+html{scrollbar-width:thin;scrollbar-color:var(--sand) transparent}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--sand);border-radius:var(--r-pill);border:3px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:var(--muted);background-clip:content-box}
 svg{display:block;flex:none}
 
 /* ---------- отклик на нажатие ----------
@@ -137,12 +148,12 @@ svg{display:block;flex:none}
 
 /* ---------- полоса прогресса ---------- */
 .bar{height:4px;border-radius:var(--r-pill);background:var(--line-soft);overflow:hidden}
-.bar i{display:block;height:100%;background:var(--accent);border-radius:var(--r-pill);transition:width .35s var(--ease-out)}
+.bar i{display:block;height:100%;width:100%;transform:scaleX(var(--v,0));transform-origin:left center;background:var(--accent);border-radius:var(--r-pill);transition:transform .35s var(--ease-out)}
 
 /* ---------- удаление только удержанием с видимой полосой ---------- */
 .hold{position:relative;-webkit-touch-callout:none;user-select:none;touch-action:pan-y}
-.hold .hold-bar{position:absolute;left:0;bottom:0;height:3px;width:0%;background:var(--accent);border-radius:0 2px 2px 0;transition:width .15s var(--ease-out);pointer-events:none}
-.hold.holding .hold-bar{width:100%;transition:width var(--hold-dur,.65s) linear}
+.hold .hold-bar{position:absolute;left:0;bottom:0;height:3px;width:100%;transform:scaleX(0);transform-origin:left center;background:var(--accent);border-radius:0 2px 2px 0;transition:transform .15s var(--ease-out);pointer-events:none;will-change:transform}
+.hold.holding .hold-bar{transform:scaleX(1);transition:transform var(--hold-dur,.65s) linear}
 .hold.holding{background:var(--accent-soft)}
 
 /* ---------- каскад и появление ---------- */
@@ -150,10 +161,10 @@ svg{display:block;flex:none}
 @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .appear{animation:appear var(--t-base) var(--ease-out) both}
 @keyframes appear{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.nudge{animation:nudge .5s cubic-bezier(.2,.9,.3,1.3)}
+.nudge{animation:nudge .45s var(--ease-out)}
 @keyframes nudge{0%{transform:scale(1)}35%{transform:scale(1.04)}100%{transform:scale(1)}}
-.pop{animation:pop .45s cubic-bezier(.2,.9,.3,1.5)}
-@keyframes pop{0%{transform:scale(.6)}55%{transform:scale(1.16)}100%{transform:scale(1)}}
+.pop{animation:pop .4s var(--ease-out)}
+@keyframes pop{0%{transform:scale(.82)}100%{transform:scale(1)}}
 
 /* ---------- переход между экранами: новый приходит со стороны нажатой вкладки ---------- */
 .screens{position:relative;touch-action:pan-y}
