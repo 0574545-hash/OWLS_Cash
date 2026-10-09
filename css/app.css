@@ -244,9 +244,9 @@
 /* ---------- умный ввод ----------
    Каркас жёсткий: поле, полоса разбора и подпись не меняют высоту,
    поэтому карточка не скачет ни при вводе, ни при открытии клавиатуры. */
-.smart-in{width:100%;min-height:50px;padding:13px 15px;border-radius:var(--r-btn);background:var(--bg);border:1px solid var(--line);font:500 17px var(--body);color:var(--ink);outline:none;transition:background-color var(--t-base),border-color var(--t-base),box-shadow var(--t-base)}
+.smart-in{width:100%;min-height:67px;padding:11px 13px;border-radius:var(--r-btn);background:var(--bg);border:1px solid var(--line);font:500 17px var(--body);color:var(--ink);outline:none;transition:background-color var(--t-base),border-color var(--t-base),box-shadow var(--t-base)}
 .smart-in:focus{background:#fff;border-color:var(--accent);box-shadow:var(--shadow-focus)}
-.parse{min-height:62px;padding:11px 13px;display:flex;flex-direction:column;justify-content:center;gap:3px;border-radius:var(--r-btn);background:var(--bg);border:1px solid var(--line)}
+.parse{min-height:67px;padding:11px 13px;display:flex;flex-direction:column;justify-content:center;gap:3px;border-radius:var(--r-btn);background:var(--bg);border:1px solid var(--line)}
 .parse-top{display:flex;align-items:center;gap:10px;min-width:0}
 .p-sum{font:800 19px var(--display);color:var(--ink);letter-spacing:-.03em;white-space:nowrap;font-variant-numeric:tabular-nums}
 .p-sum i{font:400 12px var(--display);color:var(--accent);font-style:normal;padding-left:2px}

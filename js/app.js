@@ -378,7 +378,6 @@
     return `<div class="card form cascade-item">
       <div class="form-h"><span class="form-t">Новый расход</span><span class="form-hint">${can ? 'готово к внесению' : 'умный ввод'}</span></div>
       <div class="field">
-        <div class="field-h"><span class="lbl">Что и сколько</span></div>
         <input id="smart-in" class="smart-in" type="text" value="${esc(state.smartText)}" placeholder="1000 кафе с семьёй"
                autocomplete="off" autocapitalize="sentences" enterkeyhint="done" maxlength="80" aria-label="Сумма и описание одной строкой">
         <div class="parse${empty ? ' idle' : ''}">
