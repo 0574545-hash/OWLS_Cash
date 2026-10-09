@@ -1,9 +1,9 @@
 /* Service worker OWLS Cash: оболочка приложения кешируется для офлайна. */
-const VERSION = 'owls-cash-v18';
+const VERSION = 'owls-cash-v19';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
-  './css/fonts.css?v=18', './css/owls.css?v=18', './css/app.css?v=18',
-  './js/icons.js?v=18', './js/owls-motion.js?v=18', './js/store.js?v=18', './js/app.js?v=18',
+  './css/fonts.css?v=19', './css/owls.css?v=19', './css/app.css?v=19',
+  './js/icons.js?v=19', './js/owls-motion.js?v=19', './js/store.js?v=19', './js/app.js?v=19',
   './fonts/manrope-cyrillic.woff2', './fonts/manrope-latin.woff2',
   './fonts/unbounded-cyrillic.woff2', './fonts/unbounded-latin.woff2',
   './assets/owls_owl.png', './assets/icon-192.png', './assets/icon-512.png', './assets/apple-touch-icon.png'
