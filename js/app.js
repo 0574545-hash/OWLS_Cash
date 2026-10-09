@@ -80,6 +80,7 @@
     smartCat: null,   // категория, выбранная руками поверх распознанной
     sovaRes: null,    // последний разбор от Совы: {text, amount, category, name}
     sovaBusy: false,  // ждём ответ Совы
+    mic: false,       // идёт голосовой ввод
     amount: '', cat: null, comment: '', pad: false, padAnim: false,
     settings: false, editor: null,
     data: null
@@ -296,6 +297,69 @@
     return out;
   }
 
+  /* ---------- голосовой ввод ---------- */
+  /* Распознаёт сам телефон: служба распознавания на сервере ИИ пускает только
+     свои адреса, а у посредника в облаке адрес плавающий. На iPhone за этим
+     стоит диктовка Apple, в Chrome — распознавание Google. Где такого нет,
+     кнопку не показываем: мёртвая кнопка хуже её отсутствия. */
+  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const micOk = () => !!Rec;
+  let rec = null;
+
+  function micToggle() {
+    if (state.mic) { stopMic(); return; }
+    if (!micOk()) return;
+    try {
+      rec = new Rec();
+    } catch { return; }
+    rec.lang = 'ru-RU';
+    rec.interimResults = true;
+    rec.continuous = false;
+
+    /* Текст, который был до начала записи: распознанное дописываем к нему,
+       иначе повторное нажатие стирало бы уже введённое. */
+    const before = state.smartText.trim();
+
+    rec.onresult = e => {
+      let said = '';
+      for (let i = 0; i < e.results.length; i++) said += e.results[i][0].transcript;
+      said = said.trim();
+      if (!said) return;
+      state.smartText = before ? before + ' ' + said : said;
+      const el = state.tab === 'today' ? currentScreen() : null;
+      if (!el) return;
+      const si = el.querySelector('#smart-in');
+      if (si) si.value = state.smartText;
+      patchSmart(el);
+      /* Сову спрашиваем только по готовой фразе, а не по каждому слову. */
+      if (e.results[e.results.length - 1].isFinal) sovaSchedule(state.smartText);
+    };
+    rec.onerror = () => stopMic();
+    rec.onend = () => stopMic();
+
+    try {
+      rec.start();
+    } catch { return; }
+    setMic(true);
+  }
+
+  function stopMic() {
+    if (rec) { try { rec.stop(); } catch {} rec = null; }
+    setMic(false);
+  }
+
+  /* Класс переключаем на месте: перерисовка во время записи сбросила бы фокус. */
+  function setMic(on) {
+    if (state.mic === on) return;
+    state.mic = on;
+    const el = state.tab === 'today' ? currentScreen() : null;
+    const b = el && el.querySelector('.mic');
+    if (!b) return;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', String(on));
+    b.setAttribute('aria-label', on ? 'Остановить голосовой ввод' : 'Голосовой ввод');
+  }
+
   /* ---------- разбор через Сову ---------- */
   /* Запрос уходит не прямо в Ollama, а посреднику (Cloudflare Worker,
      см. worker/owls-sova.js): страница на https, у Совы обычный http,
@@ -487,8 +551,12 @@
     return `<div class="card form cascade-item">
       <div class="form-h"><span class="form-t">Новый расход</span></div>
       <div class="field">
-        <input id="smart-in" class="smart-in" type="text" value="${esc(state.smartText)}" placeholder="1000 кафе с семьёй"
-               autocomplete="off" autocapitalize="sentences" enterkeyhint="done" maxlength="80" aria-label="Сумма и описание одной строкой">
+        <div class="in-wrap">
+          <input id="smart-in" class="smart-in${micOk() ? ' with-mic' : ''}" type="text" value="${esc(state.smartText)}" placeholder="1000 кафе с семьёй"
+                 autocomplete="off" autocapitalize="sentences" enterkeyhint="done" maxlength="80" aria-label="Сумма и описание одной строкой">
+          ${micOk() ? `<button type="button" class="mic${state.mic ? ' on' : ''}" data-act="mic"
+                  aria-label="${state.mic ? 'Остановить голосовой ввод' : 'Голосовой ввод'}" aria-pressed="${state.mic}">${svg('mic', 19, 1.9)}</button>` : ''}
+        </div>
         <div class="parse${empty ? ' idle' : ''}${state.sovaBusy ? ' waiting' : ''}">
           <div class="parse-top">
             <span class="p-sum">${r.amount > 0 ? fmt(r.amount) : '0'}<i>₽</i></span>
@@ -757,6 +825,7 @@
       bumpEdits();
       persist();
       state.smartText = '';
+      stopMic();
       sovaForget();
       state.smartCat = null;
       rerender();
@@ -1207,6 +1276,7 @@
       case 'save': saveExpense(act); break;
       case 'save-smart': saveSmart(act); break;
       case 'smart-cat': openSmartCat(); break;
+      case 'mic': micToggle(); break;
       case 'bk-save': backupSave(act); break;
       case 'row-cat': openRowCat(act.dataset.id); break;
       case 'bk-later': state.data.backupSnooze = dayKey(new Date()); persist(); rerender(); break;
