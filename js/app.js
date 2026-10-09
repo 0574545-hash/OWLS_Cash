@@ -76,6 +76,7 @@
   /* ---------- состояние ---------- */
   const state = {
     tab: 'today',
+    smartText: '',
     amount: '', cat: null, comment: '', pad: false, padAnim: false,
     settings: false, editor: null,
     data: null
@@ -87,14 +88,18 @@
       expenses: [],
       backupAt: '',      // день последней копии, YYYY-MM-DD
       edits: 0,          // правок с последней копии
-      backupSnooze: ''   // день, до которого напоминание отложено
+      backupSnooze: '',  // день, до которого напоминание отложено
+      smart: false,      // умный ввод: одна строка вместо трёх полей
+      learned: {}        // слово → id категории, выученное на ваших правках
     };
   }
   /* Данные из хранилища могут быть от старой версии: добавляем недостающие поля. */
   function normalize(d) {
     const base = defaults();
     if (!d || !Array.isArray(d.categories) || !Array.isArray(d.expenses)) return base;
-    return Object.assign(base, d);
+    const out = Object.assign(base, d);
+    if (!out.learned || typeof out.learned !== 'object') out.learned = {};
+    return out;
   }
   state.data = normalize(Store.load());
   const persist = () => Store.save(state.data);
@@ -153,6 +158,131 @@
     return isMirror(a) ? a : (isMirror(b) ? b : a);
   }
 
+  /* ================= умный ввод =================
+     Разбор строки вроде «1000 кафе с семьёй» на сумму, категорию и
+     наименование. Работает на устройстве: сначала выученные вами слова,
+     потом названия самих категорий, потом встроенный словарь.
+     Подбор только из категорий, которые уже есть. */
+
+  /* Встроенные подсказки: слово → название категории. Берутся в расчёт,
+     только если категория с таким названием у вас существует. */
+  const HINTS = {
+    'Продукты': ['продукт', 'пятерочка', 'магнит', 'ашан', 'лента', 'перекресток', 'вкусвилл', 'дикси', 'окей', 'супермаркет', 'магазин', 'хлеб', 'молоко', 'мясо', 'овощи', 'рынок', 'бакалея'],
+    'Кафе и рестораны': ['кафе', 'ресторан', 'кофе', 'кофейня', 'обед', 'ужин', 'завтрак', 'бар', 'пицца', 'суши', 'бургер', 'столовая', 'шаурма', 'доставка', 'перекус'],
+    'Транспорт': ['метро', 'автобус', 'такси', 'трамвай', 'троллейбус', 'маршрутка', 'каршеринг', 'электричка', 'поезд', 'проезд', 'самокат', 'парковка'],
+    'Дом и ЖКХ': ['квартплата', 'жкх', 'коммуналка', '電', 'электричество', 'интернет', 'связь', 'аренда', 'ремонт', 'мебель', 'уборка'],
+    'Здоровье': ['аптека', 'лекарств', 'врач', 'стоматолог', 'анализы', 'клиника', 'больница', 'массаж', 'витамин'],
+    'Одежда': ['одежда', 'обувь', 'кроссовки', 'куртка', 'джинсы', 'рубашка', 'платье', 'носки', 'футболка'],
+    'Развлечения': ['кино', 'театр', 'концерт', 'музей', 'выставка', 'боулинг', 'игра', 'подписка', 'парк'],
+    'Бензин': ['бензин', 'заправка', 'азс', 'топливо', 'дизель', 'шины', 'колеса', 'сервис', 'автомойка', 'масло']
+  };
+
+  const STOP = new Set(['и', 'в', 'на', 'с', 'со', 'за', 'для', 'по', 'от', 'до', 'из', 'у', 'о', 'об', 'при', 'под', 'над', 'руб', 'рублей', 'рубля', 'р']);
+
+  const normWord = w => w.toLowerCase().replace(/ё/g, 'е').replace(/[^0-9a-zа-я]/g, '');
+
+  /* Слова считаются одним и тем же, если совпадает начало: так переживаем
+     склонения — «семья» и «семьёй», «продукт» и «продукты». */
+  function wordsMatch(a, b) {
+    if (!a || !b) return false;
+    if (a === b) return true;
+    const n = Math.min(a.length, b.length);
+    if (n < 4) return false;
+    let i = 0;
+    while (i < n && a[i] === b[i]) i++;
+    return i >= 4 && i >= n - 2;
+  }
+
+  const textWords = s => String(s || '').split(/[\s,.;:!?()«»"'\/\\-]+/).map(normWord).filter(w => w.length > 1 && !STOP.has(w));
+
+  /* Категория по названию: сверяем по словам, чтобы «Кафе» нашлось
+     по подсказке, записанной как «Кафе и рестораны». */
+  function catByName(name) {
+    const want = textWords(name);
+    if (!want.length) return null;
+    return orderedCats().find(c => !c.sys && textWords(c.name).some(w => want.some(q => wordsMatch(w, q)))) || null;
+  }
+
+  /* Служебная категория для нераспознанного. Создаётся при первой нужде. */
+  function noneCat(create) {
+    let c = state.data.categories.find(x => x.sys === 'none');
+    if (!c && create) {
+      const order = (state.data.categories.reduce((m, x) => Math.max(m, x.order), -1)) + 1;
+      c = { id: Store.uid(), name: 'Без категории', icon: 'circle-help', order, hidden: true, sys: 'none' };
+      state.data.categories.push(c);
+    }
+    return c || null;
+  }
+
+  /* Разбор строки. Возвращает сумму, категорию (или null) и наименование. */
+  function parseSmart(text) {
+    const src = String(text || '').trim();
+    let amount = 0, rest = src;
+
+    /* Число: цифры с пробелами-разделителями тысяч и необязательной дробью.
+       Множитель «к»/«тыс» засчитывается, только если это отдельное слово,
+       иначе «кафе» и «такси» превращались бы в тысячи. */
+    const m = src.match(/\d[\d\s\u00a0]*(?:[.,]\d{1,3})?/);
+    if (m) {
+      const token = m[0];
+      const after = src.slice(m.index + token.length);
+      const mult = after.match(/^\s*(к|k|т|тыс|тысяч[а-я]*)(?![а-яёa-z])/i);
+      const num = parseFloat(token.replace(/[\s\u00a0]/g, '').replace(',', '.')) || 0;
+      amount = Math.round(mult ? num * 1000 : num);
+      const consumed = token.length + (mult ? mult[0].length : 0);
+      rest = (src.slice(0, m.index) + ' ' + src.slice(m.index + consumed)).trim();
+    }
+    /* Хвосты вроде «руб» и «₽» в наименование не тащим. */
+    rest = rest.replace(/(^|\s)(р|руб|руб\.|рубль|рубля|рублей|₽)(?=\s|$)/gi, ' ')
+               .replace(/\s+/g, ' ')
+               .replace(/^[\s,.;:–—-]+|[\s,.;:–—-]+$/g, '');
+
+    const words = textWords(rest);
+    const live = orderedCats().filter(c => !c.sys);
+    let cat = null, learnedHit = false;
+
+    /* 1. ваши выученные слова — они главнее всего */
+    for (const w of words) {
+      for (const key of Object.keys(state.data.learned)) {
+        if (!wordsMatch(w, key)) continue;
+        const c = catById(state.data.learned[key]);
+        if (c && !c.sys) { cat = c; learnedHit = true; break; }
+      }
+      if (cat) break;
+    }
+    /* 2. названия самих категорий */
+    if (!cat) {
+      outer: for (const w of words) {
+        for (const c of live) {
+          if (textWords(c.name).some(cw => wordsMatch(cw, w))) { cat = c; break outer; }
+        }
+      }
+    }
+    /* 3. встроенный словарь, но только на существующие категории */
+    if (!cat) {
+      outer2: for (const w of words) {
+        for (const [name, keys] of Object.entries(HINTS)) {
+          if (!keys.some(k => wordsMatch(k, w))) continue;
+          const c = catByName(name);
+          if (c) { cat = c; break outer2; }
+        }
+      }
+    }
+
+    const name = rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : '';
+    return { amount, cat, name, learnedHit, raw: src };
+  }
+
+  /* Какие слова записи стоит запомнить: те, что сейчас ничем не узнаются. */
+  function learnCandidates(name) {
+    const live = orderedCats().filter(c => !c.sys);
+    return textWords(name).filter(w => {
+      if (live.some(c => textWords(c.name).some(cw => wordsMatch(cw, w)))) return false;
+      if (Object.entries(HINTS).some(([n, keys]) => keys.some(k => wordsMatch(k, w)) && catByName(n))) return false;
+      return true;
+    });
+  }
+
   /* ---------- экран «Сегодня» ---------- */
   function honeycomb(cats) {
     if (!cats.length) return '<div class="honey-empty">Все категории скрыты. Откройте настройки, чтобы вернуть их.</div>';
@@ -208,7 +338,7 @@
           <div class="sub">${fmt(d.monthAvg)} ₽ в день</div>
         </div>
       </div>
-      <div class="card form cascade-item">
+      ${state.data.smart ? smartForm() : `<div class="card form cascade-item">
         <div class="form-h"><span class="form-t">Новый расход</span><span class="form-hint">${formHint(has, can)}</span></div>
         <div class="field amount-f">
           <div class="field-h"><span class="lbl">Сумма</span>${state.pad ? '<button type="button" class="done" data-act="done">Готово</button>' : ''}</div>
@@ -226,8 +356,62 @@
           <input id="exp-name" class="input name-input" type="text" value="${esc(state.comment)}" placeholder="например, кофе с собой" autocomplete="off" autocapitalize="sentences" enterkeyhint="done" maxlength="60">
         </div>
         <button type="button" class="commit${can ? ' on' : ''}" data-act="save" aria-disabled="${!can}">${svg('plus', 19, 2.2)}Внести расход</button>
-      </div>
+      </div>`}
     </section>`;
+  }
+
+  /* Карточка умного ввода. Высота не зависит от состояния: полоса разбора
+     и подпись под ней есть всегда, меняется только содержимое. */
+  function smartForm() {
+    const r = parseSmart(state.smartText);
+    const empty = !state.smartText.trim();
+    const can = r.amount > 0;
+    const catName = r.cat ? r.cat.name : (empty ? 'категория' : 'Без категории');
+    const catIcon = r.cat ? r.cat.icon : 'circle-help';
+    return `<div class="card form cascade-item">
+      <div class="form-h"><span class="form-t">Новый расход</span><span class="form-hint">${can ? 'готово к внесению' : 'умный ввод'}</span></div>
+      <div class="field">
+        <div class="field-h"><span class="lbl">Что и сколько</span></div>
+        <input id="smart-in" class="smart-in" type="text" value="${esc(state.smartText)}" placeholder="1000 кафе с семьёй"
+               autocomplete="off" autocapitalize="sentences" enterkeyhint="done" maxlength="80" aria-label="Сумма и описание одной строкой">
+        <div class="parse${empty ? ' idle' : ''}">
+          <div class="parse-top">
+            <span class="p-sum">${r.amount > 0 ? fmt(r.amount) : '0'}<i>₽</i></span>
+            <span class="p-cat${r.cat ? '' : ' none'}">${svg(catIcon, 15, 1.7)}${esc(catName)}</span>
+          </div>
+          <div class="p-name">${empty ? 'наименование' : esc(r.name || catName)}</div>
+        </div>
+        <div class="smart-note">${!empty && !r.cat
+          ? 'Категорию назначите один раз в истории, дальше подставится сама.'
+          : 'Напишите строкой: сумма и категория определятся сами.'}</div>
+      </div>
+      <button type="button" class="commit${can ? ' on' : ''}" data-act="save-smart" aria-disabled="${!can}">${svg('plus', 19, 2.2)}Внести расход</button>
+    </div>`;
+  }
+
+  /* Обновление полосы разбора без перерисовки: фокус в поле не теряется. */
+  function patchSmart(el) {
+    const r = parseSmart(state.smartText);
+    const empty = !state.smartText.trim();
+    const can = r.amount > 0;
+    const catName = r.cat ? r.cat.name : (empty ? 'категория' : 'Без категории');
+    const parse = el.querySelector('.parse');
+    if (parse) {
+      parse.classList.toggle('idle', empty);
+      parse.querySelector('.p-sum').innerHTML = `${r.amount > 0 ? fmt(r.amount) : '0'}<i>₽</i>`;
+      const pc = parse.querySelector('.p-cat');
+      pc.classList.toggle('none', !r.cat);
+      pc.innerHTML = svg(r.cat ? r.cat.icon : 'circle-help', 15, 1.7) + esc(catName);
+      parse.querySelector('.p-name').textContent = empty ? 'наименование' : (r.name || catName);
+    }
+    const note = el.querySelector('.smart-note');
+    if (note) note.textContent = !empty && !r.cat
+      ? 'Категорию назначите один раз в истории, дальше подставится сама.'
+      : 'Напишите строкой: сумма и категория определятся сами.';
+    const h = el.querySelector('.form-hint');
+    if (h) h.textContent = can ? 'готово к внесению' : 'умный ввод';
+    const c = el.querySelector('.commit');
+    if (c) { c.classList.toggle('on', can); c.setAttribute('aria-disabled', String(!can)); }
   }
 
   /* Точечное обновление формы без перерисовки (цифры numpad). */
@@ -244,17 +428,22 @@
     const monthStr = d.now.toLocaleDateString('ru-RU', { month: 'long' });
     const body = d.groups.length ? d.groups.map(g => `<div class="group cascade-item">
         <div class="group-h"><span class="g-day">${esc(g.label)}</span><span class="g-sum">${fmt(g.sum)} ₽</span></div>
-        <div class="card flush">${g.items.map(e => `<div class="row hold" data-id="${e.id}" role="button" tabindex="0" aria-label="${esc(e.name)}, ${fmt(e.amount)} рублей. Удерживайте, чтобы удалить">
-            <span class="row-ic">${svg(catIcon(e.catId), 17, 1.6)}</span>
-            <span class="row-c"><span class="row-n">${esc(e.name)}</span><span class="row-m"><span class="row-cat">${esc(catName(e.catId))}</span><i class="dot"></i><span class="row-t">${e.ts.slice(11, 16)}</span></span></span>
+        <div class="card flush">${g.items.map(e => {
+          const un = isUnsorted(e);
+          return `<div class="row hold${un ? ' unsorted' : ''}" data-id="${e.id}" data-act="row-cat" role="button" tabindex="0" aria-label="${esc(e.name)}, ${fmt(e.amount)} рублей, ${un ? 'без категории' : esc(catName(e.catId))}. Коснитесь, чтобы выбрать категорию, удерживайте, чтобы удалить">
+            <span class="${un ? 'qmark' : 'row-ic'}">${svg(un ? 'circle-help' : catIcon(e.catId), 17, 1.6)}</span>
+            <span class="row-c"><span class="row-n">${esc(e.name)}</span><span class="row-m">${un
+              ? '<span class="fixme">нужна категория</span>'
+              : `<span class="row-cat">${esc(catName(e.catId))}</span>`}<i class="dot"></i><span class="row-t">${e.ts.slice(11, 16)}</span></span></span>
             <span class="row-a">${fmt(e.amount)} ₽</span><i class="hold-bar"></i>
-          </div>`).join('')}</div>
+          </div>`;
+        }).join('')}</div>
       </div>`).join('')
       : `<div class="card empty cascade-item"><span class="e-ic">${svg('inbox', 20, 1.6)}</span><span class="e-t">Пока пусто</span><span class="e-s">Внесите первый расход на вкладке «Сегодня» — здесь появится история по дням.</span></div>`;
     return `<section class="screen" data-screen="history">
       <header class="page-h cascade-item"><h1 class="h1">История</h1><span class="page-sub">${fmt(d.monthTotal)} ₽ за ${esc(monthStr)}</span></header>
       ${body}
-      ${d.groups.length ? '<p class="hint center small">Чтобы удалить запись, удерживайте строку.</p>' : ''}
+      ${d.groups.length ? '<p class="hint center small">Тап по строке меняет категорию, удержание удаляет запись.</p>' : ''}
     </section>`;
   }
 
@@ -306,6 +495,11 @@
       el.querySelectorAll('.row.hold').forEach(r => M.hold(r, { duration: 650, onComplete: () => removeExpense(r.dataset.id, r) }));
     }
     if (tab === 'today') {
+      const si = el.querySelector('#smart-in');
+      if (si) {
+        si.addEventListener('input', () => { state.smartText = si.value; patchSmart(el); });
+        si.addEventListener('keydown', e => { if (e.key === 'Enter') { si.blur(); saveSmart(el.querySelector('.commit')); } });
+      }
       const inp = el.querySelector('#exp-name');
       if (inp) {
         inp.addEventListener('input', () => { state.comment = inp.value; });
@@ -377,6 +571,34 @@
     };
     if (!btn || M.reduced()) { commit(); return; }
     saving = true;
+    btn.classList.add('saving');
+    btn.innerHTML = `${svg('check', 20, 2.4)}Внесено`;
+    setTimeout(commit, SAVE_DELAY);
+  }
+
+  /* Внесение из умной строки. Нераспознанное уходит в «Без категории». */
+  let savingSmart = false;
+  function saveSmart(btn) {
+    if (savingSmart) return;
+    const r = parseSmart(state.smartText);
+    if (!(r.amount > 0)) return;
+    const cat = r.cat || noneCat(true);
+    const row = {
+      id: Store.uid(), ts: localISO(new Date()), amount: r.amount,
+      catId: cat.id, name: r.name || cat.name,
+      src: 'smart'
+    };
+    const commit = () => {
+      savingSmart = false;
+      state.data.expenses.unshift(row);
+      bumpEdits();
+      persist();
+      state.smartText = '';
+      rerender();
+      M.once(document.getElementById('card-today'), 'nudge');
+    };
+    if (!btn || M.reduced()) { commit(); return; }
+    savingSmart = true;
     btn.classList.add('saving');
     btn.innerHTML = `${svg('check', 20, 2.4)}Внесено`;
     setTimeout(commit, SAVE_DELAY);
@@ -498,12 +720,23 @@
         return `<div class="crow${c.hidden ? ' is-hidden' : ''}" data-id="${c.id}">
           <span class="grip" data-grip aria-label="Перетащить">${svg('grip-vertical', 16, 1.8)}</span>
           <span class="c-ic">${svg(c.icon, 18, 1.6)}</span>
-          <button type="button" class="c-main" data-act="edit-cat" data-id="${c.id}"><span class="c-n">${esc(c.name)}</span>${c.hidden ? '<span class="c-hid">скрыта</span>' : ''}</button>
+          <button type="button" class="c-main" data-act="edit-cat" data-id="${c.id}"><span class="c-n">${esc(c.name)}</span>${c.sys ? '<span class="c-hid">служебная</span>' : (c.hidden ? '<span class="c-hid">скрыта</span>' : '')}</button>
           <button type="button" class="c-act" data-act="edit-cat" data-id="${c.id}" aria-label="Изменить категорию ${esc(c.name)}">${svg('square-pen', 17, 1.7)}</button>
           <button type="button" class="c-act del${used ? ' locked' : ' hold'}" data-act="del-cat" data-id="${c.id}" data-used="${used}" aria-label="Удалить категорию ${esc(c.name)}">${svg('trash-2', 16, 1.7)}${used ? '' : '<i class="hold-bar"></i>'}</button>
         </div>`;
       }).join('')}</div>
       <button type="button" class="add-cat pressable" data-act="new-cat">${svg('plus', 17, 1.9)}Добавить категорию</button>
+      <div class="card pad data-card">
+        <div class="sec-t">Ввод расхода</div>
+        <button type="button" class="set-row" data-act="toggle-smart" role="switch" aria-checked="${state.data.smart}">
+          <span class="t"><b>Умный ввод</b><span>Одна строка вместо трёх полей. «1000 кафе с семьёй» разберётся само.</span></span>
+          <span class="switch${state.data.smart ? ' on' : ''}"><i></i></span>
+        </button>
+        ${learnedCount() ? `<button type="button" class="set-row bordered" data-act="learned-list">
+          <span class="t"><b>Запомнено слов: ${learnedCount()}</b><span>${esc(learnedPreview())}</span></span>
+          <span class="c-chev">${svg('chevron-right', 16, 1.8)}</span>
+        </button>` : ''}
+      </div>
       <div class="card pad data-card">
         <div class="sec-t">Копия данных</div>
         <p class="hint">Файл уходит в «Файлы» → iCloud Drive: на iPhone нажмите «Сохранить в Файлы». Имя всегда одно, поэтому копия заменяется. На новом телефоне тот же файл вернёт всё обратно.</p>
@@ -622,6 +855,103 @@
     }
   });
 
+  const learnedCount = () => Object.keys(state.data.learned).filter(w => catById(state.data.learned[w])).length;
+  function learnedPreview() {
+    return Object.keys(state.data.learned)
+      .filter(w => catById(state.data.learned[w]))
+      .slice(0, 3)
+      .map(w => `${w} → ${catName(state.data.learned[w])}`)
+      .join(', ');
+  }
+
+  /* Список выученных слов: посмотреть и забыть лишнее. */
+  function openLearned() {
+    const words = Object.keys(state.data.learned).filter(w => catById(state.data.learned[w])).sort();
+    sheetHost.innerHTML = `<div class="sheet-wrap">
+      <div class="dim" data-act="close-learned"></div>
+      <div class="sheet" role="dialog" aria-modal="true" aria-label="Запомненные слова">
+        <div class="sheet-h"><span class="sec-t">Запомненные слова</span><button type="button" class="x pressable" data-act="close-learned" aria-label="Закрыть">${svg('x', 18, 1.8)}</button></div>
+        <p class="hint">Эти слова приложение выучило на ваших правках. Забытое слово просто перестанет подставляться.</p>
+        <div class="card flush">${words.map(w => `<div class="lrow">
+          <span class="l-w">${esc(w)}</span>
+          <span class="l-arrow">${svg('chevron-right', 14, 1.8)}</span>
+          <span class="l-c">${svg(catIcon(state.data.learned[w]), 15, 1.6)}${esc(catName(state.data.learned[w]))}</span>
+          <button type="button" class="c-act del hold" data-act="forget" data-w="${esc(w)}" aria-label="Забыть слово ${esc(w)}">${svg('trash-2', 16, 1.7)}<i class="hold-bar"></i></button>
+        </div>`).join('')}</div>
+        <p class="hint center small">Удержите корзину, чтобы забыть слово.</p>
+      </div>
+    </div>`;
+    sheetHost.querySelectorAll('.del.hold').forEach(b => M.hold(b, {
+      duration: 700,
+      onComplete: () => { delete state.data.learned[b.dataset.w]; persist(); if (learnedCount()) openLearned(); else { closeLearned(); openSettings(); } }
+    }));
+  }
+  function closeLearned() {
+    const wrap = sheetHost.querySelector('.sheet-wrap');
+    if (!wrap) return;
+    if (M.reduced()) { sheetHost.innerHTML = ''; return; }
+    wrap.classList.add('closing');
+    setTimeout(() => { sheetHost.innerHTML = ''; }, 210);
+  }
+
+  const isUnsorted = e => { const c = catById(e.catId); return !!c && c.sys === 'none'; };
+
+  /* Лист «Категория записи»: соты для выбора плюс предложение запомнить слово. */
+  let rowPick = null;
+  function openRowCat(id) {
+    const e = state.data.expenses.find(x => x.id === id);
+    if (!e) return;
+    const words = learnCandidates(e.name);
+    rowPick = { id, catId: isUnsorted(e) ? null : e.catId, word: words[0] || '', remember: !!words[0] };
+    drawRowCat();
+  }
+  function drawRowCat() {
+    const e = state.data.expenses.find(x => x.id === rowPick.id);
+    if (!e) { rowPick = null; return; }
+    const cats = orderedCats().filter(c => !c.sys && !c.hidden);
+    const rows = [];
+    let i = 0;
+    for (const size of honeyRows(cats.length)) { rows.push(cats.slice(i, i + size)); i += size; }
+    const target = rowPick.catId ? catById(rowPick.catId) : null;
+    sheetHost.innerHTML = `<div class="sheet-wrap">
+      <div class="dim" data-act="close-rowcat"></div>
+      <div class="sheet" role="dialog" aria-modal="true" aria-label="Категория записи">
+        <div class="sheet-h"><span class="sec-t">Категория записи</span><button type="button" class="x pressable" data-act="close-rowcat" aria-label="Закрыть">${svg('x', 18, 1.8)}</button></div>
+        <p class="hint">${esc(e.name)} · ${fmt(e.amount)} ₽</p>
+        <div class="honey">${rows.map(r => `<div class="honey-row">${r.map(c =>
+          `<button type="button" class="cat${rowPick.catId === c.id ? ' on' : ''}" data-act="rowcat-pick" data-id="${c.id}" title="${esc(c.name)}" aria-label="${esc(c.name)}" aria-pressed="${rowPick.catId === c.id}">${svg(c.icon, 26, 1.6)}</button>`
+        ).join('')}</div>`).join('')}</div>
+        <div class="picked-name">${target ? esc(target.name) : 'категория не выбрана'}</div>
+        ${rowPick.word ? `<button type="button" class="remember${rowPick.remember ? ' on' : ''}" data-act="rowcat-remember" role="switch" aria-checked="${rowPick.remember}">
+          <span class="r-ic">${svg('sparkles', 18, 1.7)}</span>
+          <span class="t">Запомнить «${esc(rowPick.word)}»${target ? ' как ' + esc(target.name) : ''}<i>В следующий раз подставится сама</i></span>
+          <span class="switch${rowPick.remember ? ' on' : ''}"><i></i></span>
+        </button>` : ''}
+        <button type="button" class="save" data-act="rowcat-save" aria-disabled="${!rowPick.catId}">Сохранить</button>
+      </div>
+    </div>`;
+  }
+  function closeRowCat() {
+    rowPick = null;
+    const wrap = sheetHost.querySelector('.sheet-wrap');
+    if (!wrap) return;
+    if (M.reduced()) { sheetHost.innerHTML = ''; return; }
+    wrap.classList.add('closing');
+    setTimeout(() => { sheetHost.innerHTML = ''; }, 210);
+  }
+  function saveRowCat() {
+    if (!rowPick || !rowPick.catId) return;
+    const e = state.data.expenses.find(x => x.id === rowPick.id);
+    if (e) {
+      e.catId = rowPick.catId;
+      if (rowPick.remember && rowPick.word) state.data.learned[rowPick.word] = rowPick.catId;
+      bumpEdits();
+      persist();
+    }
+    closeRowCat();
+    rerender();
+  }
+
   function closeEditor() {
     const wrap = sheetHost.querySelector('.sheet-wrap');
     state.editor = null;
@@ -696,7 +1026,9 @@
       case 'focus': if (!state.pad) { state.pad = true; state.padAnim = true; const a = document.activeElement; if (a && a.blur) a.blur(); rerender(); } break;
       case 'done': state.pad = false; rerender(); break;
       case 'save': saveExpense(act); break;
+      case 'save-smart': saveSmart(act); break;
       case 'bk-save': backupSave(act); break;
+      case 'row-cat': openRowCat(act.dataset.id); break;
       case 'bk-later': state.data.backupSnooze = dayKey(new Date()); persist(); rerender(); break;
     }
   });
@@ -716,6 +1048,8 @@
       case 'sample': loadSample(); break;
       case 'bk-save': backupSave(act); break;
       case 'bk-restore': pickBackupFile(); break;
+      case 'toggle-smart': state.data.smart = !state.data.smart; state.smartText = ''; state.pad = false; persist(); openSettings(); break;
+      case 'learned-list': openLearned(); break;
       case 'del-cat': {
         const used = +act.dataset.used;
         if (used) {
@@ -739,12 +1073,17 @@
       case 'save-cat': saveCategory(); break;
       case 'toggle-hidden': state.editor.hidden = !state.editor.hidden; act.setAttribute('aria-checked', String(state.editor.hidden)); act.querySelector('.switch').classList.toggle('on', state.editor.hidden); break;
       case 'close-confirm': closeConfirm(); break;
+      case 'close-rowcat': closeRowCat(); break;
+      case 'close-learned': closeLearned(); break;
+      case 'rowcat-pick': rowPick.catId = (rowPick.catId === act.dataset.id) ? null : act.dataset.id; drawRowCat(); break;
+      case 'rowcat-remember': rowPick.remember = !rowPick.remember; drawRowCat(); break;
+      case 'rowcat-save': saveRowCat(); break;
       case 'do-restore': { const obj = pendingRestore; closeConfirm(); if (obj) { backupRestore(obj); closeSettings(); } break; }
     }
   });
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
-    if (sheetHost.querySelector('.sheet-wrap')) { if (state.editor) closeEditor(); else closeConfirm(); }
+    if (sheetHost.querySelector('.sheet-wrap')) { if (state.editor) closeEditor(); else if (rowPick) closeRowCat(); else closeConfirm(); }
     else if (state.settings) closeSettings();
   });
 

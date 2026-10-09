@@ -240,3 +240,46 @@
 @media (hover:hover){.c-act.del:hover{opacity:1;background:var(--bad-bg)}.c-act.del.locked:hover{background:var(--bg);color:var(--sand)}}
 .c-act.del.holding{opacity:1;background:var(--bad-bg)}
 .c-act.del .hold-bar{background:var(--bad)}
+
+/* ---------- умный ввод ----------
+   Каркас жёсткий: поле, полоса разбора и подпись не меняют высоту,
+   поэтому карточка не скачет ни при вводе, ни при открытии клавиатуры. */
+.smart-in{width:100%;min-height:50px;padding:13px 15px;border-radius:var(--r-btn);background:var(--bg);border:1px solid var(--line);font:500 17px var(--body);color:var(--ink);outline:none;transition:background-color var(--t-base),border-color var(--t-base),box-shadow var(--t-base)}
+.smart-in:focus{background:#fff;border-color:var(--accent);box-shadow:var(--shadow-focus)}
+.parse{min-height:62px;padding:11px 13px;display:flex;flex-direction:column;justify-content:center;gap:3px;border-radius:var(--r-btn);background:var(--bg);border:1px solid var(--line)}
+.parse-top{display:flex;align-items:center;gap:10px;min-width:0}
+.p-sum{font:800 19px var(--display);color:var(--ink);letter-spacing:-.03em;white-space:nowrap;font-variant-numeric:tabular-nums}
+.p-sum i{font:400 12px var(--display);color:var(--accent);font-style:normal;padding-left:2px}
+.p-cat{display:inline-flex;align-items:center;gap:6px;font:600 12.5px var(--body);color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.p-cat.none{color:var(--muted)}
+.p-name{font:500 12px var(--body);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.parse.idle .p-sum,.parse.idle .p-sum i,.parse.idle .p-cat,.parse.idle .p-name{color:var(--faint)}
+.smart-note{min-height:34px;font:500 11.5px var(--body);color:var(--faint);line-height:1.45}
+
+/* строка истории без категории */
+.row.unsorted{background:#FFFBF8}
+.qmark{width:34px;height:34px;border-radius:var(--r-tile);background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;justify-content:center;flex:none}
+.fixme{font:700 11px var(--body);color:var(--accent);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+
+/* лист «Категория записи» */
+.picked-name{font:600 12.5px var(--body);color:var(--ink);text-align:center}
+.remember{display:flex;align-items:center;gap:10px;width:100%;padding:11px 13px;border-radius:var(--r-btn);background:var(--bg);border:1px solid var(--line-input);transition:background-color var(--t-base),border-color var(--t-base)}
+.remember.on{background:var(--accent-soft);border-color:var(--accent)}
+.remember .r-ic{color:var(--sand);flex:none;display:flex}
+.remember.on .r-ic{color:var(--accent)}
+.remember .t{flex:1;min-width:0;font:600 12.5px var(--body);color:var(--ink);line-height:1.35;text-align:left}
+.remember .t i{display:block;font-style:normal;font-weight:500;font-size:11.5px;color:var(--muted);padding-top:2px}
+
+/* переключатели в настройках */
+.set-row{display:flex;align-items:center;gap:12px;width:100%;text-align:left;min-height:52px}
+.set-row.bordered{border-top:1px solid var(--line-soft);padding-top:12px}
+.set-row .t{flex:1;min-width:0}
+.set-row .t b{display:block;font:700 13.5px var(--body);color:var(--ink)}
+.set-row .t span{display:block;font:500 11.5px var(--body);color:var(--muted);line-height:1.45;padding-top:3px}
+
+/* список выученных слов */
+.lrow{display:flex;align-items:center;gap:8px;padding:10px 12px;border-top:1px solid var(--line-soft);min-height:48px}
+.lrow:first-child{border-top:0}
+.l-w{font:600 13px var(--body);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40%}
+.l-arrow{color:var(--sand);flex:none;display:flex}
+.l-c{flex:1;min-width:0;display:flex;align-items:center;gap:6px;font:500 12.5px var(--body);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
