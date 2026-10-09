@@ -1,0 +1,9 @@
+name = "owls-sova"
+main = "owls-sova.js"
+compatibility_date = "2026-10-09"
+
+# Адрес сервера ИИ сюда не пишем: он заводится как секрет командой
+#   npx wrangler secret put SOVA_URL
+# и в репозиторий не попадает.
+[vars]
+ALLOW_ORIGINS = "https://0574545-hash.github.io"
