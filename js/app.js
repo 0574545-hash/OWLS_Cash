@@ -304,27 +304,45 @@
      кнопку не показываем: мёртвая кнопка хуже её отсутствия. */
   const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
   const micOk = () => !!Rec;
-  let rec = null;
+  const MIC_LIMIT = 15000;  // сам закроется: открытый микрофон забывать нельзя
+  let rec = null, micStarting = false, micTimer = 0;
 
   function micToggle() {
-    if (state.mic) { stopMic(); return; }
+    if (state.mic || micStarting) { stopMic(); return; }
     if (!micOk()) return;
+    let r;
     try {
-      rec = new Rec();
+      r = new Rec();
     } catch { return; }
-    rec.lang = 'ru-RU';
-    rec.interimResults = true;
-    rec.continuous = false;
+    rec = r;
+    r.lang = 'ru-RU';
+    r.interimResults = true;
+    /* Не обрываемся на первой паузе: «тысяча… кафе с семьёй» — одна фраза. */
+    r.continuous = true;
 
     /* Текст, который был до начала записи: распознанное дописываем к нему,
        иначе повторное нажатие стирало бы уже введённое. */
     const before = state.smartText.trim();
+    let heard = false;
 
-    rec.onresult = e => {
+    /* Загораемся только когда микрофон действительно открыт. Раньше кнопка
+       зажигалась сразу после start(), человек начинал говорить в ещё не
+       открытый микрофон и начало фразы пропадало. */
+    r.onstart = () => {
+      if (rec !== r) return;
+      micStarting = false;
+      setMic(true);
+      clearTimeout(micTimer);
+      micTimer = setTimeout(() => stopMic(), MIC_LIMIT);
+    };
+
+    r.onresult = e => {
+      if (rec !== r) return;
       let said = '';
       for (let i = 0; i < e.results.length; i++) said += e.results[i][0].transcript;
       said = said.trim();
       if (!said) return;
+      heard = true;
       state.smartText = before ? before + ' ' + said : said;
       const el = state.tab === 'today' ? currentScreen() : null;
       if (!el) return;
@@ -334,18 +352,52 @@
       /* Сову спрашиваем только по готовой фразе, а не по каждому слову. */
       if (e.results[e.results.length - 1].isFinal) sovaSchedule(state.smartText);
     };
-    rec.onerror = () => stopMic();
-    rec.onend = () => stopMic();
 
+    r.onerror = ev => {
+      if (rec !== r) return;
+      /* aborted — это наш же вызов abort при перезапуске, молчим. */
+      if (ev && ev.error === 'aborted') return;
+      stopMic(!heard);
+    };
+    r.onend = () => {
+      if (rec !== r) return;
+      /* Ничего не разобрали — показываем это, иначе кнопка просто гаснет
+         и непонятно, не услышала она или не запустилась. */
+      stopMic(!heard);
+    };
+
+    micStarting = true;
     try {
-      rec.start();
-    } catch { return; }
-    setMic(true);
+      r.start();
+    } catch {
+      micStarting = false;
+      rec = null;
+    }
   }
 
-  function stopMic() {
-    if (rec) { try { rec.stop(); } catch {} rec = null; }
+  function stopMic(miss) {
+    clearTimeout(micTimer);
+    micStarting = false;
+    if (rec) {
+      const r = rec;
+      rec = null;
+      /* abort, а не stop: stop закрывается не сразу, и следующее нажатие
+         налетало на ещё живой разбор — запуск молча срывался. */
+      try { r.abort(); } catch { try { r.stop(); } catch {} }
+    }
     setMic(false);
+    if (miss) micMiss();
+  }
+
+  /* Мигание кнопки: меняем только цвет, сдвиг сбил бы её с места. */
+  function micMiss() {
+    const el = state.tab === 'today' ? currentScreen() : null;
+    const b = el && el.querySelector('.mic');
+    if (!b) return;
+    b.classList.remove('miss');
+    void b.offsetWidth;
+    b.classList.add('miss');
+    setTimeout(() => b.classList.remove('miss'), 600);
   }
 
   /* Класс переключаем на месте: перерисовка во время записи сбросила бы фокус. */

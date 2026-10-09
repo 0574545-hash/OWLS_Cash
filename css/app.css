@@ -258,6 +258,10 @@
 .mic::before{content:'';position:absolute;inset:-3px}
 .mic:active{transform:translateY(-50%) scale(.9);transition-duration:60ms}
 .mic.on{background:var(--accent)}
+/* Ничего не услышали: мигаем цветом. Сдвиг или дрожь сбили бы кнопку с места. */
+.mic.miss{animation:mic-miss .55s var(--ease-out)}
+@keyframes mic-miss{0%,100%{background:var(--accent-dark)}25%,75%{background:var(--sand)}}
+@media (prefers-reduced-motion:reduce){.mic.miss{animation:none}}
 .mic.on::after{content:'';position:absolute;inset:0;border-radius:50%;border:2px solid var(--accent);animation:mic-pulse 1.3s var(--ease-out) infinite}
 @keyframes mic-pulse{from{transform:scale(1);opacity:.55}to{transform:scale(1.65);opacity:0}}
 @media (prefers-reduced-motion:reduce){.mic.on::after{animation:none;opacity:.35;transform:scale(1.2)}}
