@@ -307,21 +307,27 @@
   const MIC_LIMIT = 15000;   // сам закроется: открытый микрофон забывать нельзя
   const MIC_WATCH = 1500;    // столько ждём открытия, дальше считаем сбоем
   const MIC_WATCH_1 = 20000; // в первый раз iOS спрашивает разрешение: человек читает
-  let recObj = null;         // распознаватель один на всё: Safari не любит новые
+  let recObj = null;
+  let micGen = 0;            // номер сеанса: события от прошлых не слушаем
   let micStarting = false, micHeard = false, micBefore = '';
-  let micEverStarted = false; // был ли хоть один удачный сеанс
+  let micEverStarted = false;
   let micTimer = 0, micWatch = 0;
 
-  function makeRec() {
-    const r = new Rec();
+  /* На каждый сеанс — новый распознаватель со своими обработчиками и номером.
+     «Конец» прошлого сеанса приходит с опозданием, уже после начала нового.
+     Раньше он гасил кнопку, и дальше распознанный текст отбрасывался —
+     микрофон слышал, а приложение выбрасывало. Это и было «второй раз не
+     слышит». Теперь у остановленного распознавателя обработчики сняты, и
+     запоздавшее событие уходит в пустоту; номер сеанса — второй замок. */
+  function bindRec(r, gen) {
     r.lang = 'ru-RU';
     r.interimResults = true;
-    /* Не обрываемся на первой паузе: «тысяча… кафе с семьёй» — одна фраза. */
-    r.continuous = true;
+    /* На iPhone непрерывный режим поддержан плохо: сеанс заканчивается сам
+       после фразы. Так надёжнее, чем держать микрофон открытым. */
+    r.continuous = false;
 
-    /* Загораемся, только когда микрофон действительно открыт: иначе человек
-       говорит в ещё не открытый микрофон и начало фразы пропадает. */
     r.onstart = () => {
+      if (gen !== micGen) return;
       micStarting = false;
       micEverStarted = true;
       clearTimeout(micWatch);
@@ -330,8 +336,10 @@
       micTimer = setTimeout(() => stopMic(), MIC_LIMIT);
     };
 
+    /* Текст принимаем всегда, пока сеанс наш. Никаких проверок состояния
+       кнопки: ошибиться в её состоянии дешевле, чем потерять сказанное. */
     r.onresult = e => {
-      if (!state.mic && !micStarting) return;
+      if (gen !== micGen) return;
       let said = '';
       for (let i = 0; i < e.results.length; i++) said += e.results[i][0].transcript;
       said = said.trim();
@@ -348,12 +356,16 @@
     };
 
     r.onerror = ev => {
-      const err = ev && ev.error;
-      if (err === 'aborted') return;   // это наш же вызов при перезапуске
+      if (gen !== micGen) return;
+      if (ev && ev.error === 'aborted') return;   // это наш же вызов
+      micDetach();
       micFinish(!micHeard);
     };
-    r.onend = () => micFinish(!micHeard);
-    return r;
+    r.onend = () => {
+      if (gen !== micGen) return;
+      micDetach();
+      micFinish(!micHeard);
+    };
   }
 
   function micToggle() {
@@ -366,10 +378,13 @@
   }
 
   /* Второй сеанс подряд Safari иногда не открывает: либо бросает ошибку на
-     start, либо молчит — ни onstart, ни onerror. Поэтому отпускаем прежний
-     распознаватель и пробуем ещё раз; не вышло и со второй — мигаем. */
+     start, либо молчит — ни начала, ни ошибки. Отпускаем распознаватель и
+     пробуем ещё раз; не вышло и со второй — мигаем. */
   function micStart(retry) {
-    if (!recObj) recObj = makeRec();
+    micDetach();
+    try { recObj = new Rec(); } catch { micFail(); return; }
+    const gen = ++micGen;
+    bindRec(recObj, gen);
     micStarting = true;
     try {
       recObj.start();
@@ -389,12 +404,19 @@
     }, micEverStarted ? MIC_WATCH : MIC_WATCH_1);
   }
 
-  function micRecycle() {
-    if (!recObj) return;
+  /* Отвязываем распознаватель: его поздние события больше никого не трогают. */
+  function micDetach() {
+    if (!recObj) return null;
     const r = recObj;
     recObj = null;
+    micGen++;
     r.onstart = r.onresult = r.onerror = r.onend = null;
-    try { r.abort(); } catch {}
+    return r;
+  }
+
+  function micRecycle() {
+    const r = micDetach();
+    if (r) { try { r.abort(); } catch {} }
   }
 
   function micFail() {
@@ -404,7 +426,7 @@
     micMiss();
   }
 
-  /* Сеанс закончился сам: микрофон уже закрыт, трогать распознаватель не надо. */
+  /* Сеанс кончился сам: микрофон уже закрыт, трогать распознаватель не надо. */
   function micFinish(miss) {
     clearTimeout(micWatch);
     clearTimeout(micTimer);
@@ -421,7 +443,8 @@
     const was = state.mic || micStarting;
     micStarting = false;
     setMic(false);
-    if (recObj && was) { try { recObj.stop(); } catch {} }
+    const r = micDetach();
+    if (r && was) { try { r.stop(); } catch {} }
     if (was && miss) micMiss();
   }
 
