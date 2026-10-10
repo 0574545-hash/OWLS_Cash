@@ -108,6 +108,11 @@
 .slide-thumb .th-ok{opacity:0;scale:.5}
 .commit.slide-done .slide-thumb{background:#fff;color:var(--accent-dark);box-shadow:0 2px 8px rgba(120,40,10,.25);transition:transform .24s cubic-bezier(.2,.9,.25,1),background-color .2s,color .2s;animation:thumb-land .34s var(--ease-out) .2s both}
 .commit.slide-done .slide-thumb .th-go{opacity:0;scale:.5}
+/* Порог пройден, палец ещё на ручке: галочка уже видна, заливка плотнее. */
+.commit.slide-ready .slide-thumb .th-go{opacity:0;scale:.5}
+.commit.slide-ready .slide-thumb .th-ok{opacity:1;scale:1;transition-delay:0s}
+.commit.slide-ready .slide-thumb{background:rgba(255,255,255,.34)}
+.commit.slide-ready .slide-fill{background:rgba(255,255,255,.26)}
 .commit.slide-done .slide-thumb .th-ok{opacity:1;scale:1;transition-delay:.12s}
 .commit.slide-done .slide-fill{transition:transform .24s cubic-bezier(.2,.9,.25,1)}
 @keyframes thumb-land{0%{scale:1}40%{scale:1.14}70%{scale:.96}100%{scale:1}}

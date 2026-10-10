@@ -206,7 +206,13 @@
     const label = el.querySelector('.slide-label');
     if (!thumb) return;
     let id = null, x0 = 0, dx = 0, moved = false, t0 = 0;
+    const READY = 0.68;   // дальше этой доли пути — засчитается
+    const STIFF = 24;     // первые пиксели ручка идёт туже пальца
     const travel = () => Math.max(1, el.clientWidth - thumb.offsetWidth - 10);
+    /* Сопротивление на старте: до STIFF пикселей ручка отстаёт от пальца
+       (квадратично), к STIFF догоняет и дальше идёт вровень. Случайное
+       касание не сдвигает её заметно, а свайп ощущается весомее. */
+    const stiff = raw => (raw < STIFF ? (raw * raw) / STIFF : raw);
 
     const paint = p => {
       thumb.style.transform = 'translate(' + (p * travel()) + 'px, -50%)';
@@ -214,13 +220,26 @@
       /* Надпись тает к середине пути: ручка не должна наезжать на буквы. */
       if (label) label.style.opacity = String(Math.max(0, 1 - p * 2.2));
       el.classList.toggle('slid', p > 0.02);
+      /* Порог чувствуется до отпускания: стрелка становится галочкой. */
+      el.classList.toggle('slide-ready', p >= READY);
     };
     const release = () => {
       el.classList.remove('dragging');
       thumb.style.transform = '';
       if (fill) fill.style.transform = '';
       if (label) label.style.opacity = '';
-      el.classList.remove('slid');
+      el.classList.remove('slid', 'slide-ready');
+    };
+    /* Недотянул — ручка возвращается пружиной: с маленьким перелётом за
+       начало и обратно. Ясно, что это отказ, а не сбой. */
+    const springBack = from => {
+      release();
+      if (reduced() || !thumb.animate || from < 8) return;
+      thumb.animate([
+        { transform: 'translate(' + from + 'px, -50%)' },
+        { transform: 'translate(-4px, -50%)', offset: 0.72 },
+        { transform: 'translate(0, -50%)' }
+      ], { duration: 340, easing: 'cubic-bezier(.3,.7,.3,1)' });
     };
 
     thumb.addEventListener('pointerdown', e => {
@@ -233,7 +252,7 @@
     thumb.addEventListener('pointermove', e => {
       if (e.pointerId !== id) return;
       const t = travel();
-      dx = Math.max(0, Math.min(t, e.clientX - x0));
+      dx = Math.max(0, Math.min(t, stiff(e.clientX - x0)));
       if (dx > 4) moved = true;
       paint(dx / t);
       e.preventDefault();
@@ -245,7 +264,7 @@
       const p = dx / t;
       const v = dx / Math.max(1, performance.now() - t0);
       el.classList.remove('dragging');
-      if (p >= 0.68 || (v > 0.5 && dx > 44)) {
+      if (p >= READY || (v > 0.5 && dx > 44)) {
         /* Довозим ручку до края с торможением и только потом вносим:
            подтверждение должно быть видно, а не мелькнуть. */
         el.classList.add('slide-done');
@@ -254,7 +273,7 @@
         /* Страховка: если внесение не перерисовало экран, возвращаем кнопку. */
         setTimeout(() => { if (el.isConnected && !el.classList.contains('saving')) { el.classList.remove('slide-done'); release(); } }, 2000);
       } else {
-        release();
+        springBack(dx);
       }
       dx = 0;
     };
