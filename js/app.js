@@ -833,6 +833,7 @@
                   aria-label="${state.mic ? 'Остановить голосовой ввод' : 'Голосовой ввод'}" aria-pressed="${state.mic}">${svg('mic', 19, 1.9)}</button>` : ''}
         </div>
         <div class="parse${empty ? ' idle' : ''}${state.sovaBusy ? ' waiting' : ''}">
+          <div class="p-hint">${svg('sparkles', 14, 1.8)}<span>Сумма, категория и название появятся здесь</span></div>
           <div class="parse-top">
             <span class="p-sum">${r.amount > 0 ? fmt(r.amount) : '0'}<i>₽</i></span>
             <button type="button" class="p-cat${cat ? '' : ' none'}${state.smartCat ? ' manual' : ''}" data-act="smart-cat" aria-label="${smartCatLabel(r, catLabel)}">
