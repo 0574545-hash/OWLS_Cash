@@ -372,6 +372,7 @@
     r.continuous = false;
 
     r.onstart = () => {
+      mlog('Safari: начало' + (gen !== micGen ? ' (прежний сеанс)' : ''));
       if (gen !== micGen) return;
       micStarting = false;
       micEverStarted = true;
@@ -389,19 +390,23 @@
     };
 
     r.onerror = ev => {
+      mlog('Safari: ошибка ' + (ev && ev.error));
       if (gen !== micGen) return;
       if (ev && ev.error === 'aborted') return;   // это наш же вызов
       micDetach();
       micFinish(!micHeard);
     };
     r.onend = () => {
+      mlog('Safari: конец, текст ' + (micHeard ? 'был' : 'не был'));
       if (gen !== micGen) return;
+      setTimeout(showMicLog, 50);
       micDetach();
       micFinish(!micHeard);
     };
   }
 
   function micAccept(e) {
+    if (e.results[e.results.length - 1].isFinal) mlog('Safari: фраза готова');
     let said = '';
     for (let i = 0; i < e.results.length; i++) said += e.results[i][0].transcript;
     said = said.trim();
@@ -576,6 +581,7 @@
       if (!said) { micMiss(); showMicLog(); return; }
       micHeard = true;
       state.smartText = micBefore ? micBefore + ' ' + said : said;
+      showMicLog();   // пока ищем причину — журнал после каждой записи
       const el = state.tab === 'today' ? currentScreen() : null;
       if (!el) return;
       const si = el.querySelector('#smart-in');
