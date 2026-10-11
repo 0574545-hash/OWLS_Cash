@@ -1136,6 +1136,68 @@
   /* Внесение расхода. Кнопка сначала показывает галочку (300ms),
      потом запись уходит в список и форма очищается. */
   const SAVE_DELAY = 300;
+
+  /* Внесение ощущается законченным: от галочки — всплеск, потом сумма летит
+     в «Дашборд», там «сегодня» докручивается, столбик дня подрастает, карточка
+     кивает. Вместе около секунды. При «уменьшении движения» ничего этого нет. */
+  function burstAt(r) {
+    if (!r) return;
+    const x = r.left + r.width / 2, y = r.top + r.height / 2;
+    const cols = ['var(--accent)', 'var(--accent-dark)', 'var(--ink)', 'var(--sand)'];
+    const N = 14;
+    for (let i = 0; i < N; i++) {
+      const p = document.createElement('i');
+      p.className = 'burst';
+      p.style.left = x + 'px';
+      p.style.top = y + 'px';
+      p.style.background = cols[i % cols.length];
+      document.body.appendChild(p);
+      const a = i / N * Math.PI * 2 + Math.random() * 0.4;
+      const d = 30 + Math.random() * 30, k = 0.6 + Math.random() * 0.7;
+      p.animate([
+        { transform: `translate(-50%,-50%) scale(${k})`, opacity: 1 },
+        { transform: `translate(calc(-50% + ${(Math.cos(a) * d).toFixed(1)}px), calc(-50% + ${(Math.sin(a) * d).toFixed(1)}px)) scale(0)`, opacity: 0 }
+      ], { duration: 520 + Math.random() * 160, easing: 'cubic-bezier(.2,.7,.2,1)' }).onfinish = () => p.remove();
+    }
+  }
+
+  function flyToDash(from, amount, before) {
+    const card = document.getElementById('card-today');
+    const n = card && card.querySelector('.num .n');
+    if (!n) return;
+    const land = () => {
+      M.count(n, before, before + amount, fmt, 450);
+      M.once(card, 'nudge');
+      const bar = card.querySelector('.wk-b.now');
+      if (bar) bar.animate([{ transform: 'scaleY(.35)' }, { transform: 'scaleY(1)' }],
+        { duration: 480, easing: 'cubic-bezier(.2,.9,.3,1.25)' });
+    };
+    n.textContent = fmt(before);
+    const t = n.getBoundingClientRect();
+    if (!from || t.bottom < 0 || t.top > innerHeight) { land(); return; }   // карточку прокрутили — просто докрутить
+    const chip = document.createElement('span');
+    chip.className = 'fly-sum';
+    chip.textContent = '+' + fmt(amount) + ' ₽';
+    document.body.appendChild(chip);
+    const c = chip.getBoundingClientRect();
+    const x0 = from.left + from.width / 2 - c.width / 2, y0 = from.top + from.height / 2 - c.height / 2;
+    const dx = t.left + t.width / 2 - c.width / 2 - x0, dy = t.top + t.height / 2 - c.height / 2 - y0;
+    chip.style.left = x0 + 'px';
+    chip.style.top = y0 + 'px';
+    chip.animate([
+      { transform: 'translate(0,0) scale(.8)', opacity: 0 },
+      { transform: `translate(${(dx * 0.3).toFixed(1)}px, ${(dy * 0.3 - 36).toFixed(1)}px) scale(1.06)`, opacity: 1, offset: 0.3 },
+      { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(.5)`, opacity: 0.15 }
+    ], { duration: 580, easing: 'cubic-bezier(.45,0,.25,1)' }).onfinish = () => { chip.remove(); land(); };
+  }
+
+  /* Общий конец внесения: всплеск сразу, полёт — когда экран уже перерисован. */
+  function celebrate(btn) {
+    const th = btn && (btn.querySelector('.slide-thumb') || btn);
+    const r = th ? th.getBoundingClientRect() : null;
+    burstAt(r);
+    return r;
+  }
   let saving = false;
 
   function saveExpense(btn) {
@@ -1144,16 +1206,20 @@
     const cat = state.cat && catById(state.cat);
     if (!(amount > 0) || !cat) return;
     const row = { id: Store.uid(), ts: localISO(new Date()), amount, catId: cat.id, name: state.comment.trim() || cat.name };
+    let from = null;
     const commit = () => {
       saving = false;
+      const before = derive().todayTotal;
       state.data.expenses.unshift(row);
       bumpEdits();
       persist();
       state.amount = ''; state.cat = null; state.comment = ''; state.pad = false;
       rerender();
-      M.once(document.getElementById('card-today'), 'nudge');
+      if (from) flyToDash(from, amount, before);
+      else M.once(document.getElementById('card-today'), 'nudge');
     };
     if (!btn || M.reduced()) { commit(); return; }
+    from = celebrate(btn);
     saving = true;
     btn.classList.add('saving');
     const label = btn.querySelector('.commit-t');
@@ -1175,8 +1241,10 @@
       catId: cat.id, name: r.name || cat.name,
       src: 'smart'
     };
+    let from = null;
     const commit = () => {
       savingSmart = false;
+      const before = derive().todayTotal;
       state.data.expenses.unshift(row);
       if (learnWord) state.data.learned[learnWord] = cat.id;
       bumpEdits();
@@ -1186,9 +1254,11 @@
       sovaForget();
       state.smartCat = null;
       rerender();
-      M.once(document.getElementById('card-today'), 'nudge');
+      if (from) flyToDash(from, row.amount, before);
+      else M.once(document.getElementById('card-today'), 'nudge');
     };
     if (!btn || M.reduced()) { commit(); return; }
+    from = celebrate(btn);
     savingSmart = true;
     btn.classList.add('saving');
     const label = btn.querySelector('.commit-t');
