@@ -932,7 +932,7 @@
         </button>
         <button type="button" class="card sum go pressable cascade-item${longToday ? ' compact' : ''}" id="card-today" data-act="open-dash" aria-label="Дашборд: сегодня ${fmt(d.todayTotal)} рублей, за ${esc(monthStr)} ${fmt(d.monthTotal)} рублей">
           <div class="lbl go-h">Дашборд${svg('chevron-right', 14, 2)}</div>
-          <div class="dash-top"><div class="num"><span class="n">${fmt(d.todayTotal)}</span><span class="rub accent">₽</span></div><span class="sub">сегодня</span></div>
+          <div class="dash-top"><div class="num"><span class="n">${fmt(d.todayTotal)}</span><span class="rub accent">₽</span></div></div>
           ${weekBars()}
         </button>
       </div>
