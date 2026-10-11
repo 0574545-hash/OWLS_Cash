@@ -612,7 +612,36 @@
     });
   }
 
+  /* Отдача в пальце. Из браузера iPhone вибрацию не даёт, но системный
+     переключатель (iOS 18) щёлкает сам — дёргаем невидимый. Android — вибрация.
+     Работает только внутри нажатия. */
+  let hapEl = null;
+  function haptic() {
+    if (navigator.vibrate) { try { navigator.vibrate(12); } catch {} return; }
+    if (!hapEl) {
+      hapEl = document.createElement('label');
+      hapEl.setAttribute('aria-hidden', 'true');
+      hapEl.style.cssText = 'position:fixed;left:-100px;top:0;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none';
+      hapEl.innerHTML = '<input type="checkbox" switch tabindex="-1">';
+      document.body.appendChild(hapEl);
+    }
+    hapEl.click();
+  }
+  /* Мгновенный отклик кнопки на нажатие: включаем — темнеет и волна, выключаем — схлопывается. */
+  function micTapFx(starting) {
+    haptic();
+    const el = state.tab === 'today' ? currentScreen() : null;
+    const b = el && el.querySelector('.mic');
+    if (!b) return;
+    b.classList.remove('go', 'stop');
+    void b.offsetWidth;
+    b.classList.add(starting ? 'go' : 'stop');
+    b.classList.toggle('arm', starting);
+    b.addEventListener('animationend', () => b.classList.remove('go', 'stop'), { once: true });
+  }
+
   function micToggle() {
+    micTapFx(!(vc || state.mic || micStarting));
     /* Разбор через Сову включён — голос пишем сами и отдаём ей. Иначе —
        распознавание Safari: на iPhone оно слышит только в первый раз. */
     if (voiceOn()) { voiceToggle(); return; }
@@ -701,6 +730,7 @@
     const el = state.tab === 'today' ? currentScreen() : null;
     const b = el && el.querySelector('.mic');
     if (!b) return;
+    b.classList.remove('arm');
     b.classList.remove('miss');
     void b.offsetWidth;
     b.classList.add('miss');
@@ -709,10 +739,11 @@
 
   /* Класс переключаем на месте: перерисовка во время записи сбросила бы фокус. */
   function setMic(on) {
-    if (state.mic === on) return;
-    state.mic = on;
     const el = state.tab === 'today' ? currentScreen() : null;
     const b = el && el.querySelector('.mic');
+    if (b) b.classList.remove('arm');   // мгновенная подсветка нажатия своё отработала
+    if (state.mic === on) return;
+    state.mic = on;
     if (!b) return;
     b.classList.toggle('on', on);
     b.setAttribute('aria-pressed', String(on));
