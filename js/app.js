@@ -221,11 +221,22 @@
     return c || null;
   }
 
-  /* Разбор строки. Возвращает сумму, категорию (или null) и наименование. */
-  function parseLocal(text) {
-    const src = String(text || '').trim();
-    let amount = 0, rest = src;
+  /* Деньги словами: «штука на архитектора», «две штуки», «полторы тысячи»,
+     «косарь», «сотка», «пятихатка». Число перед словом — тоже словом. */
+  const COUNT_W = { 'один':1, 'одна':1, 'одну':1, 'два':2, 'две':2, 'три':3, 'четыре':4, 'пять':5, 'шесть':6,
+    'семь':7, 'восемь':8, 'девять':9, 'десять':10, 'полторы':1.5, 'полтора':1.5, 'пол':0.5 };
+  const UNIT_W = [
+    [/^(тысяч[а-я]*|тыщ[а-я]*|штук[аиу]?|косар[а-я]*|косых|кусок|куска|кусков)$/, 1000],
+    [/^(пятихат[а-я]*|пятисотк[а-я]*)$/, 500],
+    [/^(сотк[а-я]*|сотн[а-я]*|сотен)$/, 100],
+  ];
+  /* Слова, которые после цифры значат «тысячи». «Штука» — только если других
+     чисел в строке нет: в «яйца 2 штуки 150» это количество, а не деньги. */
+  const MULT_RE = /^\s*(к|k|т|тыс|тысяч[а-я]*|тыщ[а-я]*)(?![а-яёa-z])/i;
+  const MULT_SLANG_RE = /^\s*(штук[аиу]?|косар[а-я]*|косых|кусок|куска|кусков)(?![а-яёa-z])/i;
 
+  /* Сумма из строки и строка без неё. */
+  function parseAmount(src) {
     /* Число: цифры с пробелами-разделителями тысяч и необязательной дробью.
        Множитель «к»/«тыс» засчитывается, только если это отдельное слово,
        иначе «кафе» и «такси» превращались бы в тысячи. */
@@ -233,12 +244,33 @@
     if (m) {
       const token = m[0];
       const after = src.slice(m.index + token.length);
-      const mult = after.match(/^\s*(к|k|т|тыс|тысяч[а-я]*)(?![а-яёa-z])/i);
+      let mult = after.match(MULT_RE);
+      if (!mult && !/\d/.test(after)) mult = after.match(MULT_SLANG_RE);
       const num = parseFloat(token.replace(/[\s\u00a0]/g, '').replace(',', '.')) || 0;
-      amount = Math.round(mult ? num * 1000 : num);
       const consumed = token.length + (mult ? mult[0].length : 0);
-      rest = (src.slice(0, m.index) + ' ' + src.slice(m.index + consumed)).trim();
+      return { amount: Math.round(mult ? num * 1000 : num),
+               rest: (src.slice(0, m.index) + ' ' + src.slice(m.index + consumed)).trim() };
     }
+    const re = /[а-яёa-z]+/gi;
+    let w, prev = null;
+    while ((w = re.exec(src))) {
+      const word = w[0].toLowerCase().replace(/ё/g, 'е');
+      const unit = UNIT_W.find(([r]) => r.test(word));
+      if (unit) {
+        let start = w.index, k = 1;
+        if (prev && COUNT_W[prev.word] && /^\s+$/.test(src.slice(prev.end, w.index))) { start = prev.index; k = COUNT_W[prev.word]; }
+        return { amount: Math.round(k * unit[1]),
+                 rest: (src.slice(0, start) + ' ' + src.slice(w.index + w[0].length)).trim() };
+      }
+      prev = { word, index: w.index, end: w.index + w[0].length };
+    }
+    return { amount: 0, rest: src };
+  }
+
+  /* Разбор строки. Возвращает сумму, категорию (или null) и наименование. */
+  function parseLocal(text) {
+    const src = String(text || '').trim();
+    let { amount, rest } = parseAmount(src);
     /* Хвосты вроде «руб» и «₽» в наименование не тащим. */
     rest = rest.replace(/(^|\s)(р|руб|руб\.|рубль|рубля|рублей|₽)(?=\s|$)/gi, ' ')
                .replace(/\s+/g, ' ')
@@ -1315,8 +1347,16 @@
   }
 
   function openSettings() {
+    /* Перерисовка открытых настроек (переключатель, правка) — экран остаётся на месте. */
+    const was = state.settings ? overlay.querySelector('.overlay') : null;
+    const y = was ? was.scrollTop : 0;
     state.settings = true;
     overlay.innerHTML = renderSettings();
+    if (was) {
+      const o = overlay.querySelector('.overlay');
+      o.classList.remove('appear');
+      o.scrollTop = y;
+    }
     const su = overlay.querySelector('#sova-url');
     if (su) {
       su.addEventListener('input', () => { state.data.sovaUrl = su.value.trim(); sovaForget(); persist(); });
