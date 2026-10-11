@@ -446,3 +446,17 @@
 .in-wrap:has(.smart-in:placeholder-shown) .eq{top:50%;bottom:auto;height:30px;margin-top:-15px;left:16px;right:62px}
 .in-wrap:has(.smart-in:placeholder-shown) .eq i{width:4px}
 /* Пустое поле — без примера. Пробел в placeholder нужен, чтобы :placeholder-shown отличал пустое поле (эквалайзер по центру). */
+
+/* Зовём к полю, пока оно пустое, без курсора и без записи.
+   Блик: раз в 4,5 с по рамке пробегает светлая оранжевая полоса (конический
+   градиент, вырезанный маской по контуру). Микрофон: раз в 3 с от него
+   расходится тихая волна — можно сказать голосом. */
+@property --glint{syntax:'<angle>';inherits:false;initial-value:0deg}
+.in-wrap::before{content:'';position:absolute;inset:0;border-radius:var(--r-btn);padding:1.5px;pointer-events:none;opacity:0;
+  background:conic-gradient(from var(--glint),transparent 0deg 250deg,rgba(242,99,54,.15) 285deg,var(--accent) 320deg,rgba(255,255,255,.9) 330deg,transparent 345deg);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+.in-wrap:has(.smart-in:placeholder-shown:not(:focus)):not(:has(.eq))::before{animation:glint 4.5s cubic-bezier(.45,0,.25,1) infinite 1s}
+@keyframes glint{0%{--glint:0deg;opacity:0}6%{opacity:1}36%{--glint:360deg;opacity:1}42%,100%{--glint:360deg;opacity:0}}
+.in-wrap:has(.smart-in:placeholder-shown:not(:focus)) .mic:not(.on):not(.arm):not(.go):not(.stop):not(.miss){animation:mic-call 3s ease-out infinite 1.6s}
+@keyframes mic-call{0%{box-shadow:0 0 0 0 rgba(242,99,54,.45)}35%,100%{box-shadow:0 0 0 14px rgba(242,99,54,0)}}
+@media (prefers-reduced-motion:reduce){.in-wrap::before,.in-wrap .mic{animation:none!important}}
