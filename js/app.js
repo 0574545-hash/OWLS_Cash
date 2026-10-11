@@ -461,6 +461,7 @@
     box.innerHTML = '<b>Журнал микрофона</b><i>сфотографируйте экран и пришлите · нажмите, чтобы закрыть</i>'
       + '<pre>' + esc('iOS ' + (ua ? ua[1].replace(/_/g, '.') : '?') + ', ' + where + ', v' + APP_V + '\n'
       + micLog.slice(-30).join('\n')) + '</pre>';
+    box.scrollTop = box.scrollHeight;   // последние строки — главные
   }
 
   const voiceOn = () => !voiceDown && !!(state.data.sova && state.data.sovaUrl && navigator.mediaDevices && window.MediaRecorder);
@@ -581,13 +582,24 @@
       if (!said) { micMiss(); showMicLog(); return; }
       micHeard = true;
       state.smartText = micBefore ? micBefore + ' ' + said : said;
-      showMicLog();   // пока ищем причину — журнал после каждой записи
       const el = state.tab === 'today' ? currentScreen() : null;
-      if (!el) return;
-      const si = el.querySelector('#smart-in');
+      const si = el && el.querySelector('#smart-in');
+      mlog('в поле: вкладка ' + state.tab + (el ? '' : ', экрана нет') + (si ? '' : ', поля нет') +
+        (micBefore ? ', было «' + micBefore.slice(0, 20) + '»' : ''));
+      if (!el) { showMicLog(); return; }
       if (si) si.value = state.smartText;
       patchSmart(el);
       sovaSchedule(state.smartText);
+      mlog('поле: «' + (si ? si.value.slice(0, 24) : '—') + '»');
+      /* Через секунду смотрим, не стёрло ли поле что-то после нас. */
+      setTimeout(() => {
+        const now = currentScreen();
+        const s2 = now && now.querySelector('#smart-in');
+        mlog('через 1 с: «' + (s2 ? s2.value.slice(0, 24) : '—') + '»' + (s2 !== si ? ', поле другое' : '') +
+          (si && !si.isConnected ? ', прежнее убрано' : '') + ', state «' + state.smartText.slice(0, 16) + '»');
+        showMicLog();
+      }, 1000);
+      showMicLog();   // пока ищем причину — журнал после каждой записи
     }).catch(e => {
       mlog('отправка: ' + (e && e.name));
       vc = null;
@@ -1116,7 +1128,7 @@
     if (tab === 'today') {
       const si = el.querySelector('#smart-in');
       if (si) {
-        si.addEventListener('input', () => { state.smartText = si.value; sovaSchedule(si.value); patchSmart(el); });
+        si.addEventListener('input', e => { const it = e.inputType || '?'; if (!si.value || !/^(insertText|deleteContentBackward)$/.test(it)) mlog('ввод: ' + it + ', длина ' + si.value.length); state.smartText = si.value; sovaSchedule(si.value); patchSmart(el); });
         si.addEventListener('keydown', e => { if (e.key === 'Enter') { si.blur(); saveSmart(el.querySelector('.commit')); } });
       }
       /* Долгое нажатие на микрофон открывает журнал, не запуская записи. */

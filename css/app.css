@@ -394,7 +394,7 @@
 .l-c{flex:1;min-width:0;display:flex;align-items:center;gap:6px;font:500 12.5px var(--body);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* Временный журнал микрофона. Лежит поверх экрана и ничего не сдвигает. */
-.mic-log{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom) + 84px);z-index:90;max-height:46vh;overflow:auto;padding:12px 14px;border-radius:var(--r-btn);background:#fff;border:1px solid var(--line);box-shadow:0 12px 32px rgba(11,30,53,.18);color:var(--ink)}
+.mic-log{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom) + 12px);z-index:90;max-height:36vh;overflow:auto;padding:12px 14px;border-radius:var(--r-btn);background:#fff;border:1px solid var(--line);box-shadow:0 12px 32px rgba(11,30,53,.18);color:var(--ink)}
 .mic-log b{display:block;font:700 13px var(--body)}
 .mic-log i{display:block;font:500 11px var(--body);font-style:normal;color:var(--muted);padding:2px 0 8px}
 .mic-log pre{margin:0;font:500 11px/1.45 ui-monospace,Menlo,monospace;white-space:pre-wrap;word-break:break-word;color:var(--ink)}
