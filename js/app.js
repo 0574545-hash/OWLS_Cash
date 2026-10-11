@@ -876,7 +876,6 @@
     return '<div class="rec">' + last.map(e => `<div class="rec-i">
         <span class="rec-ic">${svg(catIcon(e.catId), 16, 1.7)}</span>
         <span class="rec-a">${fmt(e.amount)}</span>
-        <span class="rec-c">${esc(catName(e.catId).split(/[\s,]+/)[0])}</span>
       </div>`).join('') + '</div>';
   }
 
@@ -907,7 +906,7 @@
       ${keys.map(k => `<button type="button" class="key" data-key="${k}">${k}</button>`).join('')}
       <button type="button" class="key bs" data-key="bs" aria-label="Стереть">${svg('delete', 21, 1.7)}</button>
     </div>` : '';
-    const longToday = fmt(d.todayTotal).length > 7, longMonth = fmt(d.monthTotal).length > 7;
+    const longToday = fmt(d.todayTotal).length > 7;
     return `<section class="screen" data-screen="today">
       <header class="head cascade-item">
         <div class="spacer"></div>
@@ -935,7 +934,6 @@
           <div class="lbl go-h">Дашборд${svg('chevron-right', 14, 2)}</div>
           <div class="dash-top"><div class="num"><span class="n">${fmt(d.todayTotal)}</span><span class="rub accent">₽</span></div><span class="sub">сегодня</span></div>
           ${weekBars()}
-          <div class="sub">${esc(monthStr)} · <b class="sub-b">${fmt(d.monthTotal)} ₽</b></div>
         </button>
       </div>
       ${state.data.smart ? smartForm() : `<div class="card form cascade-item">
