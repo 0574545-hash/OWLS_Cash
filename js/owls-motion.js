@@ -215,7 +215,9 @@
     const stiff = raw => (raw < STIFF ? (raw * raw) / STIFF : raw);
 
     const paint = p => {
-      thumb.style.transform = 'translate(' + (p * travel()) + 'px, -50%)';
+      /* Положение — свойством translate, а не transform: иначе «приземление»
+         (свойство scale) умножало бы и сдвиг, и ручка вылетала за край. */
+      thumb.style.translate = (p * travel()) + 'px 0';
       if (fill) fill.style.transform = 'scaleX(' + p + ')';
       /* Надпись тает к середине пути: ручка не должна наезжать на буквы. */
       if (label) label.style.opacity = String(Math.max(0, 1 - p * 2.2));
@@ -225,7 +227,7 @@
     };
     const release = () => {
       el.classList.remove('dragging');
-      thumb.style.transform = '';
+      thumb.style.translate = '';
       if (fill) fill.style.transform = '';
       if (label) label.style.opacity = '';
       el.classList.remove('slid', 'slide-ready');
@@ -236,9 +238,9 @@
       release();
       if (reduced() || !thumb.animate || from < 8) return;
       thumb.animate([
-        { transform: 'translate(' + from + 'px, -50%)' },
-        { transform: 'translate(-4px, -50%)', offset: 0.72 },
-        { transform: 'translate(0, -50%)' }
+        { translate: from + 'px 0' },
+        { translate: '-4px 0', offset: 0.72 },
+        { translate: '0 0' }
       ], { duration: 340, easing: 'cubic-bezier(.3,.7,.3,1)' });
     };
 

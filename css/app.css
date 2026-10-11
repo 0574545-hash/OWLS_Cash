@@ -92,7 +92,7 @@
    Всё лежит поверх кнопки: высота 58 px не меняется. */
 .commit-t{position:relative;z-index:1;display:flex;align-items:center;gap:9px;pointer-events:none;transition:opacity .16s var(--ease-out)}
 .slide-fill{position:absolute;inset:0;border-radius:inherit;background:rgba(255,255,255,.16);transform:scaleX(0);transform-origin:left;pointer-events:none;transition:transform .26s var(--ease-out)}
-.slide-thumb{position:absolute;z-index:2;left:5px;top:50%;width:48px;height:48px;border-radius:50%;display:none;align-items:center;justify-content:center;color:#fff;background:rgba(255,255,255,.2);box-shadow:inset 0 1px 0 rgba(255,255,255,.25);transform:translate(0,-50%);transition:transform .26s var(--ease-out),background-color .16s;touch-action:none;cursor:grab}
+.slide-thumb{position:absolute;z-index:2;left:5px;top:50%;margin-top:-24px;width:48px;height:48px;border-radius:50%;display:none;align-items:center;justify-content:center;color:#fff;background:rgba(255,255,255,.2);box-shadow:inset 0 1px 0 rgba(255,255,255,.25);transition:translate .26s var(--ease-out),background-color .16s;touch-action:none;cursor:grab}
 .slide-thumb::before{content:'';position:absolute;inset:-5px}
 .commit.on .slide-thumb{display:flex}
 /* Пока тянем, ручка идёт за пальцем без задержки. */
@@ -106,7 +106,7 @@
    кнопка говорит «Внесено». Ручку не прячем — она и есть подтверждение. */
 .slide-thumb .th-go,.slide-thumb .th-ok{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;transition:opacity .18s var(--ease-out),scale .22s var(--ease-out)}
 .slide-thumb .th-ok{opacity:0;scale:.5}
-.commit.slide-done .slide-thumb{background:#fff;color:var(--accent-dark);box-shadow:0 2px 8px rgba(120,40,10,.25);transition:transform .24s cubic-bezier(.2,.9,.25,1),background-color .2s,color .2s;animation:thumb-land .34s var(--ease-out) .2s both}
+.commit.slide-done .slide-thumb{background:#fff;color:var(--accent-dark);box-shadow:0 2px 8px rgba(120,40,10,.25);transition:translate .24s cubic-bezier(.2,.9,.25,1),background-color .2s,color .2s;animation:thumb-land .34s var(--ease-out) .2s both}
 .commit.slide-done .slide-thumb .th-go{opacity:0;scale:.5}
 /* Порог пройден, палец ещё на ручке: галочка уже видна, заливка плотнее. */
 .commit.slide-ready .slide-thumb .th-go{opacity:0;scale:.5}
@@ -122,7 +122,7 @@
 @media (prefers-reduced-motion:reduce){.commit.slide-done .slide-thumb{animation:none}}
 /* Нажатие не вносит: ручка подскакивает вправо и возвращается — тянуть её. */
 .commit.hint .slide-thumb{animation:slide-hint .6s var(--ease-out)}
-@keyframes slide-hint{0%,100%{transform:translate(0,-50%)}35%{transform:translate(22px,-50%)}65%{transform:translate(-3px,-50%)}}
+@keyframes slide-hint{0%,100%{translate:0 0}35%{translate:22px 0}65%{translate:-3px 0}}
 @media (prefers-reduced-motion:reduce){.commit.hint .slide-thumb{animation:none}}
 
 @media (prefers-reduced-motion:reduce){.slide-thumb,.slide-fill{transition:none}}
