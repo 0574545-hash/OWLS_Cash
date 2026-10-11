@@ -745,11 +745,32 @@
 
   function formHint(has, can) { return can ? 'готово к внесению' : (has ? 'выберите категорию' : 'введите сумму'); }
 
-  /* Последние три траты для карточки «История» на главной. */
+  /* Последние три траты для карточки «История» — значками категорий:
+     глазом схватывается быстрее, чем строки текста. */
   function recentRows() {
     const last = state.data.expenses.slice().sort((a, b) => b.ts.localeCompare(a.ts)).slice(0, 3);
     if (!last.length) return '<div class="rec-empty">Здесь будут последние траты</div>';
-    return '<div class="rec">' + last.map(e => `<div class="rec-r"><span class="rec-n">${esc(e.name)}</span><span class="rec-a">${fmt(e.amount)}</span></div>`).join('') + '</div>';
+    return '<div class="rec">' + last.map(e => `<div class="rec-i">
+        <span class="rec-ic">${svg(catIcon(e.catId), 16, 1.7)}</span>
+        <span class="rec-a">${fmt(e.amount)}</span>
+        <span class="rec-c">${esc(catName(e.catId).split(/[\s,]+/)[0])}</span>
+      </div>`).join('') + '</div>';
+  }
+
+  /* Семь дней по сегодня включительно: суммы для столбиков дашборда. */
+  function weekBars() {
+    const now = new Date();
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      days.push({ key: dayKey(d), wd: d.toLocaleDateString('ru-RU', { weekday: 'short' }), sum: 0 });
+    }
+    const byKey = Object.fromEntries(days.map(x => [x.key, x]));
+    state.data.expenses.forEach(e => { const x = byKey[e.ts.slice(0, 10)]; if (x) x.sum += e.amount; });
+    const max = Math.max(1, ...days.map(x => x.sum));
+    return '<div class="wk" aria-hidden="true">' + days.map((x, i) =>
+      `<i class="wk-b${i === 6 ? ' now' : ''}${x.sum ? '' : ' zero'}" style="height:${x.sum ? Math.max(8, Math.round(x.sum / max * 100)) : 6}%" title="${x.wd}: ${fmt(x.sum)} ₽"></i>`
+    ).join('') + '</div>';
   }
 
   function renderToday(d) {
@@ -789,8 +810,8 @@
         </button>
         <button type="button" class="card sum go pressable cascade-item${longToday ? ' compact' : ''}" id="card-today" data-act="open-dash" aria-label="Дашборд: сегодня ${fmt(d.todayTotal)} рублей, за ${esc(monthStr)} ${fmt(d.monthTotal)} рублей">
           <div class="lbl go-h">Дашборд${svg('chevron-right', 14, 2)}</div>
-          <div class="sub">сегодня</div>
-          <div class="num"><span class="n">${fmt(d.todayTotal)}</span><span class="rub accent">₽</span></div>
+          <div class="dash-top"><div class="num"><span class="n">${fmt(d.todayTotal)}</span><span class="rub accent">₽</span></div><span class="sub">сегодня</span></div>
+          ${weekBars()}
           <div class="sub">${esc(monthStr)} · <b class="sub-b">${fmt(d.monthTotal)} ₽</b></div>
         </button>
       </div>

@@ -44,12 +44,17 @@
 .go-h{display:flex;align-items:center;justify-content:space-between}
 .go-h svg{color:var(--sand);flex:none}
 .sub-b{font-weight:700;color:var(--ink)}
-.rec{display:flex;flex-direction:column;gap:6px;min-width:0}
-.rec-r{display:flex;justify-content:space-between;gap:8px;min-width:0;font:500 12px var(--body);color:var(--ink)}
-.rec-n{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;min-width:0}
-.rec-a{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
-.rec-r+.rec-r+.rec-r{color:var(--muted)}
-.rec-r+.rec-r+.rec-r .rec-a{font-weight:500}
+.rec{display:grid;grid-template-columns:repeat(3,minmax(0,auto));justify-content:space-between;gap:4px;margin-top:2px}
+.rec-i{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;text-align:center}
+.rec-ic{width:32px;height:32px;border-radius:50%;background:var(--bg);display:flex;align-items:center;justify-content:center;color:var(--ink);margin-bottom:2px}
+.rec-a{font:700 12px var(--body);color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap}
+.rec-c{font:500 10.5px var(--body);color:var(--muted);max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+/* Дашборд: сегодня и семь столбиков по дням, сегодняшний — оранжевый. */
+.dash-top{display:flex;align-items:baseline;justify-content:space-between;gap:6px;min-width:0}
+.wk{display:flex;align-items:flex-end;gap:4px;height:30px}
+.wk-b{flex:1;border-radius:3px;background:var(--stone);min-height:2px}
+.wk-b.zero{background:var(--line-soft)}
+.wk-b.now{background:var(--accent)}
 .rec-empty{font:500 12px var(--body);color:var(--muted);line-height:1.45}
 .page-h .back{align-self:center}
 .page-h .h1{flex:1}
