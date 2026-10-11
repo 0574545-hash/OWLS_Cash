@@ -248,7 +248,7 @@
       if (!mult && !/\d/.test(after)) mult = after.match(MULT_SLANG_RE);
       const num = parseFloat(token.replace(/[\s\u00a0]/g, '').replace(',', '.')) || 0;
       const consumed = token.length + (mult ? mult[0].length : 0);
-      return { amount: Math.round(mult ? num * 1000 : num),
+      return { amount: Math.round(mult ? num * 1000 : num), slang: !!mult && MULT_SLANG_RE.test(mult[0]),
                rest: (src.slice(0, m.index) + ' ' + src.slice(m.index + consumed)).trim() };
     }
     const re = /[а-яёa-z]+/gi;
@@ -259,18 +259,18 @@
       if (unit) {
         let start = w.index, k = 1;
         if (prev && COUNT_W[prev.word] && /^\s+$/.test(src.slice(prev.end, w.index))) { start = prev.index; k = COUNT_W[prev.word]; }
-        return { amount: Math.round(k * unit[1]),
+        return { amount: Math.round(k * unit[1]), slang: !/^тыс|^тыщ/.test(word),
                  rest: (src.slice(0, start) + ' ' + src.slice(w.index + w[0].length)).trim() };
       }
       prev = { word, index: w.index, end: w.index + w[0].length };
     }
-    return { amount: 0, rest: src };
+    return { amount: 0, slang: false, rest: src };
   }
 
   /* Разбор строки. Возвращает сумму, категорию (или null) и наименование. */
   function parseLocal(text) {
     const src = String(text || '').trim();
-    let { amount, rest } = parseAmount(src);
+    let { amount, rest, slang } = parseAmount(src);
     /* Хвосты вроде «руб» и «₽» в наименование не тащим. */
     rest = rest.replace(/(^|\s)(р|руб|руб\.|рубль|рубля|рублей|₽)(?=\s|$)/gi, ' ')
                .replace(/\s+/g, ' ')
@@ -309,7 +309,7 @@
     }
 
     const name = rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : '';
-    return { amount, cat, name, learnedHit, raw: src };
+    return { amount, slang, cat, name, learnedHit, raw: src };
   }
 
   /* Разбор строки для экрана: правила на устройстве плюс, если Сова успела
@@ -320,7 +320,9 @@
     const s = state.sovaRes;
     if (!s || s.text !== base.raw) return base;
     const out = Object.assign({}, base, { sova: true });
-    if (s.amount > 0) out.amount = s.amount;
+    /* Сленг («штука», «косарь», «сотка») Сова читает как количество и даёт 1 ₽ —
+       здесь разбор на устройстве главнее. */
+    if (s.amount > 0 && !base.slang) out.amount = s.amount;
     if (s.name) out.name = s.name;
     if (!base.learnedHit && s.category) {
       const c = catByName(s.category);
