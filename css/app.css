@@ -317,12 +317,15 @@
 .mic::before{content:'';position:absolute;inset:-3px}
 .mic{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 .mic:active{transform:translateY(-50%) scale(.9);transition-duration:60ms}
-.mic.on{background:var(--accent)}
+/* Запись идёт: кнопка темнеет и подрастает, поле подсвечено — видно издалека. */
+.mic.on{background:var(--ink);transform:translateY(-50%) scale(1.1)}
+.mic.on:active{transform:translateY(-50%) scale(.98)}
+.in-wrap:has(.mic.on) .smart-in{background:#fff;border-color:var(--accent);box-shadow:var(--shadow-focus)}
 /* Ничего не услышали: мигаем цветом. Сдвиг или дрожь сбили бы кнопку с места. */
 .mic.miss{animation:mic-miss .55s var(--ease-out)}
 @keyframes mic-miss{0%,100%{background:var(--accent-dark)}25%,75%{background:var(--sand)}}
 @media (prefers-reduced-motion:reduce){.mic.miss{animation:none}}
-.mic.on::after{content:'';position:absolute;inset:0;border-radius:50%;border:2px solid var(--accent);animation:mic-pulse 1.3s var(--ease-out) infinite}
+.mic.on::after{content:'';position:absolute;inset:0;border-radius:50%;border:3px solid var(--accent);animation:mic-pulse 1.3s var(--ease-out) infinite}
 @keyframes mic-pulse{from{transform:scale(1);opacity:.55}to{transform:scale(1.65);opacity:0}}
 @media (prefers-reduced-motion:reduce){.mic.on::after{animation:none;opacity:.35;transform:scale(1.2)}}
 .parse{position:relative;min-height:67px;padding:11px 13px;display:flex;flex-direction:column;justify-content:center;gap:3px;border-radius:var(--r-btn);background:var(--bg);border:1px solid var(--line)}
