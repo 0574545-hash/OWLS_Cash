@@ -4,7 +4,7 @@
    ============================================================ */
 
 :root{
-  --tabbar:62px;                       /* контент таб-бара без безопасной зоны */
+  --tabbar:0px;                        /* таб-бара больше нет: приложение — одна страница */
   --screen-top:calc(18px + var(--safe-top));
   --screen-bottom:calc(var(--tabbar) + var(--safe-bottom) + 28px);
 }
@@ -38,6 +38,21 @@
 .num .rub{font:400 13px var(--display);padding-top:2px;color:var(--muted)}
 .num .rub.accent{color:var(--accent)}
 .sum .sub{font:500 11px var(--body);color:var(--muted);font-variant-numeric:tabular-nums}
+/* Карточки-входы на главной: История и Дашборд. Обе одной высоты. */
+.sums{align-items:stretch}
+.sum.go{text-align:left;width:100%;color:inherit;font:inherit;cursor:pointer}
+.go-h{display:flex;align-items:center;justify-content:space-between}
+.go-h svg{color:var(--sand);flex:none}
+.sub-b{font-weight:700;color:var(--ink)}
+.rec{display:flex;flex-direction:column;gap:6px;min-width:0}
+.rec-r{display:flex;justify-content:space-between;gap:8px;min-width:0;font:500 12px var(--body);color:var(--ink)}
+.rec-n{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;min-width:0}
+.rec-a{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.rec-r+.rec-r+.rec-r{color:var(--muted)}
+.rec-r+.rec-r+.rec-r .rec-a{font-weight:500}
+.rec-empty{font:500 12px var(--body);color:var(--muted);line-height:1.45}
+.page-h .back{align-self:center}
+.page-h .h1{flex:1}
 .sum.compact .n{font-size:21px}
 
 /* ---------- карточка «Новый расход» ---------- */

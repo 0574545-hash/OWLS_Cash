@@ -745,6 +745,13 @@
 
   function formHint(has, can) { return can ? 'готово к внесению' : (has ? 'выберите категорию' : 'введите сумму'); }
 
+  /* Последние три траты для карточки «История» на главной. */
+  function recentRows() {
+    const last = state.data.expenses.slice().sort((a, b) => b.ts.localeCompare(a.ts)).slice(0, 3);
+    if (!last.length) return '<div class="rec-empty">Здесь будут последние траты</div>';
+    return '<div class="rec">' + last.map(e => `<div class="rec-r"><span class="rec-n">${esc(e.name)}</span><span class="rec-a">${fmt(e.amount)}</span></div>`).join('') + '</div>';
+  }
+
   function renderToday(d) {
     const has = state.amount.length > 0 && parseInt(state.amount, 10) > 0;
     const can = has && !!state.cat && !!catById(state.cat);
@@ -776,16 +783,16 @@
         </div>
       </div>` : ''}
       <div class="sums">
-        <div class="card sum cascade-item${longToday ? ' compact' : ''}" id="card-today">
-          <div class="lbl">Сегодня</div>
+        <button type="button" class="card sum go pressable cascade-item" data-act="open-history" aria-label="История расходов">
+          <div class="lbl go-h">История${svg('chevron-right', 14, 2)}</div>
+          ${recentRows()}
+        </button>
+        <button type="button" class="card sum go pressable cascade-item${longToday ? ' compact' : ''}" id="card-today" data-act="open-dash" aria-label="Дашборд: сегодня ${fmt(d.todayTotal)} рублей, за ${esc(monthStr)} ${fmt(d.monthTotal)} рублей">
+          <div class="lbl go-h">Дашборд${svg('chevron-right', 14, 2)}</div>
+          <div class="sub">сегодня</div>
           <div class="num"><span class="n">${fmt(d.todayTotal)}</span><span class="rub accent">₽</span></div>
-          <div class="sub">${d.todayCount} ${plural(d.todayCount, 'операция', 'операции', 'операций')}</div>
-        </div>
-        <div class="card sum cascade-item${longMonth ? ' compact' : ''}">
-          <div class="lbl">${esc(monthStr)}</div>
-          <div class="num"><span class="n">${fmt(d.monthTotal)}</span><span class="rub">₽</span></div>
-          <div class="sub">${fmt(d.monthAvg)} ₽ в день</div>
-        </div>
+          <div class="sub">${esc(monthStr)} · <b class="sub-b">${fmt(d.monthTotal)} ₽</b></div>
+        </button>
       </div>
       ${state.data.smart ? smartForm() : `<div class="card form cascade-item">
         <div class="form-h"><span class="form-t">Новый расход</span><span class="form-hint">${formHint(has, can)}</span></div>
@@ -944,9 +951,9 @@
           </div>`;
         }).join('')}</div>
       </div>`).join('')
-      : `<div class="card empty cascade-item"><span class="e-ic">${svg('inbox', 20, 1.6)}</span><span class="e-t">Пока пусто</span><span class="e-s">Внесите первый расход на вкладке «Сегодня» — здесь появится история по дням.</span></div>`;
+      : `<div class="card empty cascade-item"><span class="e-ic">${svg('inbox', 20, 1.6)}</span><span class="e-t">Пока пусто</span><span class="e-s">Внесите первый расход на главной — здесь появится история по дням.</span></div>`;
     return `<section class="screen" data-screen="history">
-      <header class="page-h cascade-item"><h1 class="h1">История</h1><span class="page-sub">${fmt(d.monthTotal)} ₽ за ${esc(monthStr)}</span></header>
+      <header class="page-h cascade-item"><button type="button" class="back pressable" data-act="go-home" aria-label="Назад">${svg('chevron-left', 18, 1.8)}</button><h1 class="h1">История</h1><span class="page-sub">${fmt(d.monthTotal)} ₽ за ${esc(monthStr)}</span></header>
       ${body}
       ${d.groups.length ? '<p class="hint center small">Тап по строке меняет категорию, удержание удаляет запись.</p>' : ''}
     </section>`;
@@ -967,7 +974,7 @@
       </div>`;
     }).join('');
     return `<section class="screen" data-screen="dash">
-      <h1 class="h1 cascade-item">Дашборд</h1>
+      <header class="page-h cascade-item"><button type="button" class="back pressable" data-act="go-home" aria-label="Назад">${svg('chevron-left', 18, 1.8)}</button><h1 class="h1">Дашборд</h1></header>
       <div class="rings">
         <div class="ring-item cascade-item">
           <div class="total"><span class="t-l">Всего</span><span class="t-n${tot.length > 7 ? ' long' : ''}">${tot}</span><span class="t-r">₽</span></div>
@@ -981,7 +988,6 @@
 
   /* ---------- монтирование экрана ---------- */
   const screens = document.getElementById('screens');
-  const tabbar = document.getElementById('tabbar');
   const currentScreen = () => screens.querySelector('.screen:not(.leave)');
 
   function renderScreen(tab) {
@@ -1038,7 +1044,6 @@
     afterMount(tab, el);
     if (dir) window.scrollTo(0, 0);
     if (dir || !old) M.cascade(el, '.cascade-item');
-    tabbar.querySelectorAll('.tab').forEach(b => { const on = b.dataset.tab === tab; b.classList.toggle('on', on); b.setAttribute('aria-current', on ? 'page' : 'false'); });
   }
 
   /* Перерисовка текущего экрана на месте (без перехода и каскада). */
@@ -1567,6 +1572,9 @@
     const act = e.target.closest('[data-act]'); if (!act) return;
     switch (act.dataset.act) {
       case 'settings': openSettings(); break;
+      case 'open-history': goTab('history'); break;
+      case 'open-dash': goTab('dash'); break;
+      case 'go-home': goTab('today'); break;
       case 'focus': if (!state.pad) { state.pad = true; state.padAnim = true; const a = document.activeElement; if (a && a.blur) a.blur(); rerender(); } break;
       case 'done': state.pad = false; rerender(); break;
       case 'save': saveExpense(act); break;
@@ -1584,7 +1592,6 @@
       if (row) { e.preventDefault(); if (confirm('Удалить запись?')) removeExpense(row.dataset.id, row); }
     }
   });
-  tabbar.addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) goTab(b.dataset.tab); });
   overlay.addEventListener('click', e => {
     const act = e.target.closest('[data-act]'); if (!act) return;
     switch (act.dataset.act) {
@@ -1637,11 +1644,12 @@
     else if (state.settings) closeSettings();
   });
 
-  /* Свайп между вкладками. */
+  /* Приложение — одна страница. История и дашборд открываются с карточек
+     на главной, а назад — стрелкой или свайпом вправо, как на iPhone. */
   M.swipe(screens, {
     getScreen: currentScreen,
-    canGo: dir => { const i = TABS.indexOf(state.tab) + dir; return i >= 0 && i < TABS.length; },
-    onSwipe: (dir, offset) => goTab(TABS[TABS.indexOf(state.tab) + dir], offset)
+    canGo: dir => dir === -1 && state.tab !== 'today',
+    onSwipe: (dir, offset) => goTab('today', offset)
   });
 
   /* Смена даты (приложение открыто через полночь) — пересчитать. */
