@@ -233,6 +233,13 @@
 @keyframes slide-up{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
 .sheet-wrap.closing .dim{animation:fade var(--t-base) reverse both}
 .sheet-wrap.closing .sheet{animation:slide-up var(--t-base) var(--ease-out) reverse both}
+/* Соты выбора категории: выходят по одному, уходят так же. */
+@media (prefers-reduced-motion:no-preference){
+  .cat-pick .honey .cat{animation:cat-in .3s var(--ease-out) backwards;animation-delay:calc(60ms + var(--i,0) * 28ms)}
+  .sheet-wrap.closing .cat-pick .honey .cat{animation:cat-out .16s ease-in forwards;animation-delay:calc(var(--i,0) * 10ms)}
+}
+@keyframes cat-in{from{opacity:0;transform:scale(.55)}}
+@keyframes cat-out{to{opacity:0;transform:scale(.6)}}
 .sheet-h{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .x{width:36px;height:36px;border-radius:var(--r-btn);background:var(--bg);border:1px solid var(--line-input);display:flex;align-items:center;justify-content:center;color:var(--ink);position:relative;flex:none}
 .x::before{content:'';position:absolute;inset:-4px}

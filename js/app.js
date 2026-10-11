@@ -936,25 +936,25 @@
     const rows = [];
     let i = 0;
     for (const size of honeyRows(cats.length)) { rows.push(cats.slice(i, i + size)); i += size; }
+    let k = 0;   // номер кружка: соты выходят и уходят по одному
     sheetHost.innerHTML = `<div class="sheet-wrap">
       <div class="dim" data-act="close-smartcat"></div>
-      <div class="sheet" role="dialog" aria-modal="true" aria-label="Категория расхода">
+      <div class="sheet cat-pick" role="dialog" aria-modal="true" aria-label="Категория расхода">
         <div class="sheet-h"><span class="sec-t">Категория</span><button type="button" class="x pressable" data-act="close-smartcat" aria-label="Закрыть">${svg('x', 18, 1.8)}</button></div>
         <div class="honey">${rows.map(row => `<div class="honey-row">${row.map(c =>
-          `<button type="button" class="cat${cur && cur.id === c.id ? ' on' : ''}" data-act="smartcat-pick" data-id="${c.id}" title="${esc(c.name)}" aria-label="${esc(c.name)}" aria-pressed="${!!cur && cur.id === c.id}">${svg(c.icon, 26, 1.6)}</button>`
+          `<button type="button" class="cat${cur && cur.id === c.id ? ' on' : ''}" style="--i:${k++}" data-act="smartcat-pick" data-id="${c.id}" title="${esc(c.name)}" aria-label="${esc(c.name)}" aria-pressed="${!!cur && cur.id === c.id}">${svg(c.icon, 26, 1.6)}</button>`
         ).join('')}</div>`).join('')}</div>
         <div class="picked-name">${cur ? esc(cur.name) : 'не выбрана'}</div>
-        <p class="hint center">Выбранное здесь запомнится за словом из строки и дальше подставится само.</p>
         ${state.smartCat ? `<button type="button" class="btn-ghost wide" data-act="smartcat-auto">Определять самому</button>` : ''}
       </div>
     </div>`;
   }
   function closeSmartCat() {
     const wrap = sheetHost.querySelector('.sheet-wrap');
-    if (!wrap) return;
+    if (!wrap || wrap.classList.contains('closing')) return;
     if (M.reduced()) { sheetHost.innerHTML = ''; return; }
     wrap.classList.add('closing');
-    setTimeout(() => { sheetHost.innerHTML = ''; }, 210);
+    setTimeout(() => { if (wrap.isConnected) sheetHost.innerHTML = ''; }, 260);
   }
 
   /* Обновление полосы разбора без перерисовки: фокус в поле не теряется. */
@@ -1788,7 +1788,14 @@
       case 'close-rowcat': closeRowCat(); break;
       case 'close-learned': closeLearned(); break;
       case 'close-smartcat': closeSmartCat(); break;
-      case 'smartcat-pick': state.smartCat = (state.smartCat === act.dataset.id) ? null : act.dataset.id; closeSmartCat(); rerender(); break;
+      case 'smartcat-pick': {
+        state.smartCat = (state.smartCat === act.dataset.id) ? null : act.dataset.id;
+        /* Выбор виден мгновение до закрытия: кружок загорается, потом соты уходят. */
+        sheetHost.querySelectorAll('.cat').forEach(b => b.classList.toggle('on', b.dataset.id === state.smartCat));
+        rerender();
+        setTimeout(closeSmartCat, M.reduced() ? 0 : 140);
+        break;
+      }
       case 'smartcat-auto': state.smartCat = null; closeSmartCat(); rerender(); break;
       case 'rowcat-pick': rowPick.catId = (rowPick.catId === act.dataset.id) ? null : act.dataset.id; drawRowCat(); break;
       case 'rowcat-remember': rowPick.remember = !rowPick.remember; drawRowCat(); break;
