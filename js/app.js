@@ -54,6 +54,61 @@
   const fmt = n => Math.round(n).toLocaleString('ru-RU').replace(/ /g, ' ');
   const plural = (n, a, b, c) => { const m = n % 100, k = n % 10; if (m > 10 && m < 20) return c; if (k === 1) return a; if (k > 1 && k < 5) return b; return c; };
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+
+  /* ---------- плавные появления и исчезновения при перерисовке ----------
+     Элементы с data-k помечены как «живые». Перед перерисовкой снимаем слепок
+     (morphSnap), после — сравниваем (morphApply): пропавшие сворачиваются копией
+     на прежнем месте, новые раскрываются. Высота, отступы и промежуток ряда
+     едут вместе, поэтому соседи сдвигаются плавно, без рывка. */
+  const MORPH_MS = 220;
+  const kOf = el => el && el.dataset ? el.dataset.k : undefined;
+  const keyedUp = (el, root) => { for (let p = el.parentElement; p && p !== root; p = p.parentElement) if (kOf(p) !== undefined) return p; return null; };
+  const sibK = (el, dir) => { for (let x = el[dir]; x; x = x[dir]) if (kOf(x) !== undefined) return kOf(x); return null; };
+  function morphSnap(root) {
+    if (!root || M.reduced()) return null;
+    const list = [...root.querySelectorAll('[data-k]')].map(el => {
+      const up = keyedUp(el, root);
+      return { k: kOf(el), el, clone: el.cloneNode(true), h: el.offsetHeight, cs: getComputedStyle(el),
+               up: up ? kOf(up) : null, prev: sibK(el, 'previousElementSibling'), next: sibK(el, 'nextElementSibling'),
+               gap: parseFloat(getComputedStyle(el.parentElement).rowGap) || 0, off: el.classList.contains('is-hidden') };
+    });
+    return { list, keys: new Set(list.map(x => x.k)) };
+  }
+  function boxFrames(h, cs, gap, open) {
+    const shut = { height: '0px', paddingTop: '0px', paddingBottom: '0px', marginBottom: (-gap) + 'px', opacity: 0 };
+    const full = { height: h + 'px', paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom, marginBottom: '0px', opacity: 1 };
+    return open ? [shut, full] : [full, shut];
+  }
+  function morphApply(snap, root) {
+    if (!snap || !root) return;
+    const now = new Map([...root.querySelectorAll('[data-k]')].map(el => [kOf(el), el]));
+    /* Ушедшие: копия встаёт рядом с уцелевшим соседом и сворачивается. */
+    snap.list.forEach(x => {
+      if (now.has(x.k) || (x.up && !now.has(x.up))) return;   // родитель тоже ушёл — анимирует он
+      const c = x.clone;
+      c.removeAttribute('data-k');
+      c.style.pointerEvents = 'none';
+      c.style.overflow = 'hidden';
+      const prev = x.prev && now.get(x.prev), next = x.next && now.get(x.next), up = x.up ? now.get(x.up) : root;
+      if (prev) prev.after(c); else if (next) next.before(c); else if (up) up.appendChild(c); else return;
+      c.animate(boxFrames(x.h, x.cs, x.gap, false), { duration: MORPH_MS, easing: 'cubic-bezier(.4,0,.2,1)' }).onfinish = () => c.remove();
+    });
+    /* Новые: раскрываются с нуля. Уцелевшие, что скрылись или вернулись, — плавно меняют прозрачность. */
+    now.forEach((el, k) => {
+      const old = snap.list.find(x => x.k === k);
+      if (old) {
+        const off = el.classList.contains('is-hidden');
+        if (off !== old.off) el.animate([{ opacity: off ? 1 : 0.5 }, { opacity: 1 }], { duration: MORPH_MS });
+        return;
+      }
+      const up = keyedUp(el, root);
+      if (up && !snap.keys.has(kOf(up))) return;
+      const cs = getComputedStyle(el), gap = parseFloat(getComputedStyle(el.parentElement).rowGap) || 0;
+      el.style.overflow = 'hidden';
+      el.animate(boxFrames(el.offsetHeight, cs, gap, true), { duration: MORPH_MS + 40, easing: 'cubic-bezier(.25,1,.5,1)' })
+        .onfinish = () => { el.style.overflow = ''; };
+    });
+  }
   const pad2 = n => String(n).padStart(2, '0');
   const dayKey = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   const monthKey = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
@@ -817,7 +872,7 @@
     const dateStr = d.now.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
     const monthStr = d.now.toLocaleDateString('ru-RU', { month: 'long' });
     const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '0'];
-    const numpad = state.pad ? `<div class="numpad${state.padAnim ? ' appear' : ''}" role="group" aria-label="Клавиатура">
+    const numpad = state.pad ? `<div class="numpad" data-k="pad" role="group" aria-label="Клавиатура">
       ${keys.map(k => `<button type="button" class="key" data-key="${k}">${k}</button>`).join('')}
       <button type="button" class="key bs" data-key="bs" aria-label="Стереть">${svg('delete', 21, 1.7)}</button>
     </div>` : '';
@@ -830,7 +885,7 @@
           <img src="assets/owls_owl.png" alt="">
         </button>
       </header>
-      ${backupDue() ? `<div class="card pad bk cascade-item">
+      ${backupDue() ? `<div class="card pad bk cascade-item" data-k="bk">
         <div class="bk-top">
           <span class="bk-ic">${svg('wallet', 18, 1.7)}</span>
           <span class="bk-t"><b>${backupDaysAgo() === null ? 'Копии данных ещё не было' : `Копии не было ${backupDaysAgo()} ${plural(backupDaysAgo(), 'день', 'дня', 'дней')}`}</b><span>Файл в iCloud Drive вернёт всё на новом телефоне.</span></span>
@@ -969,7 +1024,13 @@
     if (parse) {
       parse.classList.toggle('idle', empty);
       parse.classList.toggle('waiting', state.sovaBusy);
-      parse.querySelector('.p-sum').innerHTML = `${r.amount > 0 ? fmt(r.amount) : '0'}<i>₽</i>`;
+      /* Новое значение проявляется. Набор по букве не мигает: продолжение
+         прежнего текста — это печать, а не подмена. */
+      const ps = parse.querySelector('.p-sum'), pn = parse.querySelector('.p-name'), pcn = parse.querySelector('.p-cat-n');
+      const was = { sum: ps.textContent, name: pn.textContent, cat: pcn ? pcn.textContent : '' };
+      const typed = (a, b) => !a || !b || a.startsWith(b) || b.startsWith(a);
+      ps.innerHTML = `${r.amount > 0 ? fmt(r.amount) : '0'}<i>₽</i>`;
+      if (!empty && ps.textContent !== was.sum && !typed(was.sum.replace(/\D/g, ''), String(r.amount))) M.once(ps, 'p-swap');
       const pc = parse.querySelector('.p-cat');
       pc.classList.toggle('none', !cat);
       pc.classList.toggle('manual', !!state.smartCat);
@@ -978,7 +1039,9 @@
         + (smartLearnWord(r) ? `<i class="p-learn">${svg('sparkles', 13, 1.8)}</i>` : '')
         + svg('chevron-right', 13, 2);
       pc.setAttribute('aria-label', smartCatLabel(r, catLabel));
-      parse.querySelector('.p-name').textContent = empty ? 'наименование' : (r.name || catLabel);
+      pn.textContent = empty ? 'наименование' : (r.name || catLabel);
+      if (!empty && was.cat !== catLabel) M.once(pc, 'p-swap');
+      if (!empty && !typed(was.name.toLowerCase(), pn.textContent.toLowerCase())) M.once(pn, 'p-swap');
     }
     const c = el.querySelector('.commit');
     if (c) { c.classList.toggle('on', can); c.setAttribute('aria-disabled', String(!can)); }
@@ -1108,9 +1171,11 @@
   function rerender() {
     const old = currentScreen();
     const y = window.scrollY;
+    const snap = old && old.dataset.screen === state.tab ? morphSnap(old) : null;
     const el = renderScreen(state.tab);
     if (old) old.replaceWith(el); else screens.appendChild(el);
     afterMount(state.tab, el);
+    morphApply(snap, el);
     window.scrollTo(0, y);
   }
 
@@ -1400,9 +1465,9 @@
         <h1 class="h1 h1-sm">Настройки</h1>
       </header>
       <p class="set-hint">Категории можно переименовать, скрыть или добавить свою. Порядок здесь задаёт порядок в списке при вводе.</p>
-      <div class="card flush" id="catlist">${cats.map(c => {
+      <div class="card flush" id="catlist" data-k="catlist">${cats.map(c => {
         const used = state.data.expenses.filter(e => e.catId === c.id).length;
-        return `<div class="crow${c.hidden ? ' is-hidden' : ''}" data-id="${c.id}">
+        return `<div class="crow${c.hidden ? ' is-hidden' : ''}" data-id="${c.id}" data-k="c-${c.id}">
           <span class="grip" data-grip aria-label="Перетащить">${svg('grip-vertical', 16, 1.8)}</span>
           <span class="c-ic">${svg(c.icon, 18, 1.6)}</span>
           <button type="button" class="c-main" data-act="edit-cat" data-id="${c.id}"><span class="c-n">${esc(c.name)}</span>${c.sys ? '<span class="c-hid">служебная</span>' : (c.hidden ? '<span class="c-hid">скрыта</span>' : '')}</button>
@@ -1411,22 +1476,22 @@
         </div>`;
       }).join('')}</div>
       <button type="button" class="add-cat pressable" data-act="new-cat">${svg('plus', 17, 1.9)}Добавить категорию</button>
-      <div class="card pad data-card">
+      <div class="card pad data-card" data-k="input-card">
         <div class="sec-t">Ввод расхода</div>
         <button type="button" class="set-row" data-act="toggle-smart" role="switch" aria-checked="${state.data.smart}">
           <span class="t"><b>Умный ввод</b><span>Одна строка вместо трёх полей. «1000 кафе с семьёй» разберётся само.</span></span>
           <span class="switch${state.data.smart ? ' on' : ''}"><i></i></span>
         </button>
-        ${state.data.smart ? `<button type="button" class="set-row bordered" data-act="toggle-sova" role="switch" aria-checked="${state.data.sova}">
+        ${state.data.smart ? `<button type="button" class="set-row bordered" data-k="sova" data-act="toggle-sova" role="switch" aria-checked="${state.data.sova}">
           <span class="t"><b>Разбор через Сову</b><span>Свободную фразу разбирает ИИ. Не ответил — выручает разбор на устройстве.</span></span>
           <span class="switch${state.data.sova ? ' on' : ''}"><i></i></span>
         </button>` : ''}
-        ${state.data.smart && state.data.sova ? `<div class="set-row bordered col">
+        ${state.data.smart && state.data.sova ? `<div class="set-row bordered col" data-k="sova-url">
           <span class="t"><b>Адрес разбора</b><span>Ссылка на посредника целиком, вместе с путём: путь в ней служит ключом. Без неё разбор остаётся на устройстве.</span></span>
           <input id="sova-url" class="input" type="url" value="${esc(state.data.sovaUrl)}" placeholder="https://owls-sova.workers.dev/ключ"
                  autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" aria-label="Адрес посредника для разбора через Сову">
         </div>` : ''}
-        ${learnedCount() ? `<button type="button" class="set-row bordered" data-act="learned-list">
+        ${learnedCount() ? `<button type="button" class="set-row bordered" data-k="learned" data-act="learned-list">
           <span class="t"><b>Запомнено слов: ${learnedCount()}</b><span>${esc(learnedPreview())}</span></span>
           <span class="c-chev">${svg('chevron-right', 16, 1.8)}</span>
         </button>` : ''}
@@ -1445,14 +1510,16 @@
 
   function openSettings() {
     /* Перерисовка открытых настроек (переключатель, правка) — экран остаётся на месте. */
-    const was = state.settings ? overlay.querySelector('.overlay') : null;
+    const was = state.settings ? overlay.querySelector('.overlay:not(.closing)') : null;
     const y = was ? was.scrollTop : 0;
+    const snap = was ? morphSnap(was) : null;
     state.settings = true;
     overlay.innerHTML = renderSettings();
     if (was) {
       const o = overlay.querySelector('.overlay');
       o.classList.remove('appear');
       o.scrollTop = y;
+      morphApply(snap, o);
     }
     const su = overlay.querySelector('#sova-url');
     if (su) {
@@ -1470,10 +1537,16 @@
       persist();
     } });
   }
+  /* Настройки уходят так же, как пришли: экран под ними уже перерисован. */
   function closeSettings() {
     state.settings = false;
-    overlay.innerHTML = '';
+    const o = overlay.querySelector('.overlay');
     rerender();
+    if (!o || M.reduced()) { overlay.innerHTML = ''; return; }
+    o.classList.remove('appear');
+    o.classList.add('closing');
+    o.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(10px)' }],
+      { duration: 200, easing: 'ease-in', fill: 'forwards' }).onfinish = () => o.remove();
   }
 
   /* ---------- лист категории ---------- */
@@ -1574,12 +1647,14 @@
   /* Список выученных слов: посмотреть и забыть лишнее. */
   function openLearned() {
     const words = Object.keys(state.data.learned).filter(w => catById(state.data.learned[w])).sort();
-    sheetHost.innerHTML = `<div class="sheet-wrap">
+    const was = sheetHost.querySelector('.sheet-wrap:not(.closing) .learned-sheet');
+    const snap = was ? morphSnap(was) : null;
+    sheetHost.innerHTML = `<div class="sheet-wrap${was ? ' still' : ''}">
       <div class="dim" data-act="close-learned"></div>
-      <div class="sheet" role="dialog" aria-modal="true" aria-label="Запомненные слова">
+      <div class="sheet learned-sheet" role="dialog" aria-modal="true" aria-label="Запомненные слова">
         <div class="sheet-h"><span class="sec-t">Запомненные слова</span><button type="button" class="x pressable" data-act="close-learned" aria-label="Закрыть">${svg('x', 18, 1.8)}</button></div>
         <p class="hint">Эти слова приложение выучило на ваших правках. Забытое слово просто перестанет подставляться.</p>
-        <div class="card flush">${words.map(w => `<div class="lrow">
+        <div class="card flush" data-k="words">${words.map(w => `<div class="lrow" data-k="w-${esc(w)}">
           <span class="l-w">${esc(w)}</span>
           <span class="l-arrow">${svg('chevron-right', 14, 1.8)}</span>
           <span class="l-c">${svg(catIcon(state.data.learned[w]), 15, 1.6)}${esc(catName(state.data.learned[w]))}</span>
@@ -1592,6 +1667,7 @@
       duration: 700,
       onComplete: () => { delete state.data.learned[b.dataset.w]; persist(); if (learnedCount()) openLearned(); else { closeLearned(); openSettings(); } }
     }));
+    if (was) morphApply(snap, sheetHost.querySelector('.learned-sheet'));
   }
   function closeLearned() {
     const wrap = sheetHost.querySelector('.sheet-wrap');

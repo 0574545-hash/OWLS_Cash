@@ -407,3 +407,11 @@
 .fly-cat{position:fixed;left:0;top:0;z-index:96;pointer-events:none;width:36px;height:36px;border-radius:50%;
   display:flex;align-items:center;justify-content:center;background:var(--accent);color:#fff;box-shadow:0 8px 20px rgba(242,99,54,.35)}
 .wk-b{transform-origin:bottom}
+
+/* Лист перерисован на месте (забыли слово) — без повторного въезда. */
+.sheet-wrap.still .dim,.sheet-wrap.still .sheet{animation:none}
+.overlay.closing{pointer-events:none}
+/* Строка разбора: новое значение проявляется, а не подменяется. */
+.p-swap{animation:p-swap .22s var(--ease-out)}
+@keyframes p-swap{from{opacity:.25;transform:translateY(3px)}}
+@media (prefers-reduced-motion:reduce){.p-swap{animation:none}}
