@@ -431,26 +431,64 @@
   let vc = null, vcN = 0;
   let voiceDown = false;  // посредник сказал, что голос пока нельзя (нет ключа)
 
+  /* Временный журнал голоса: «после правки текста второй раз не слышит».
+     Долгое нажатие на микрофон показывает его; после неудачи — сам. Убрать,
+     когда причина найдена. */
+  const APP_V = (document.querySelector('script[src*="app.js"]')?.src.match(/v=(\d+)/) || [])[1] || '?';
+  const micLog = [];
+  const micT0 = performance.now();
+  let micSkipClick = false;   // долгое нажатие открыло журнал — щелчок не считаем
+  function mlog(msg) {
+    micLog.push(((performance.now() - micT0) / 1000).toFixed(2) + ' ' + msg);
+    if (micLog.length > 80) micLog.shift();
+  }
+  function showMicLog() {
+    let box = document.getElementById('mic-log');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'mic-log';
+      box.className = 'mic-log';
+      box.addEventListener('click', () => box.remove());
+      document.body.appendChild(box);
+    }
+    const ua = navigator.userAgent.match(/OS (\d+[_\d]*)/);
+    const where = window.top !== window ? 'в OWLS DAY' : (navigator.standalone ? 'с экрана «Домой»' : 'в Safari');
+    box.innerHTML = '<b>Журнал микрофона</b><i>сфотографируйте экран и пришлите · нажмите, чтобы закрыть</i>'
+      + '<pre>' + esc('iOS ' + (ua ? ua[1].replace(/_/g, '.') : '?') + ', ' + where + ', v' + APP_V + '\n'
+      + micLog.slice(-30).join('\n')) + '</pre>';
+  }
+
   const voiceOn = () => !voiceDown && !!(state.data.sova && state.data.sovaUrl && navigator.mediaDevices && window.MediaRecorder);
 
   function voiceToggle() {
     if (vc) { if (vc.finish) vc.finish(); return; }
     const n = ++vcN;
     vc = { finish: null };
+    const ae = document.activeElement;
+    mlog('── голос #' + n + (ae && ae !== document.body ? ', фокус: ' + (ae.id || ae.tagName.toLowerCase()) : ''));
+    /* После правки поле в фокусе и открыта клавиатура: её диктовка может
+       держать микрофон. Закрываем клавиатуру до записи. */
+    if (ae && ae !== document.body && ae.blur) ae.blur();
     /* AudioContext — прямо в нажатии: позже iOS оставит его на паузе. */
     const AC = window.AudioContext || window.webkitAudioContext;
     let ctx = null;
-    try { ctx = new AC(); if (ctx.state === 'suspended') ctx.resume(); } catch { ctx = null; }
+    try { ctx = new AC(); if (ctx.state === 'suspended') ctx.resume(); } catch (e) { ctx = null; mlog('AudioContext: ' + e.name); }
+    if (ctx) mlog('звук: ' + ctx.state);
     micBefore = state.smartText.trim();
     const t0 = performance.now();
     navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+      const tr = stream.getAudioTracks()[0];
+      mlog('микрофон дан за ' + Math.round(performance.now() - t0) + ' мс' +
+        (tr ? ', дорожка ' + tr.readyState + (tr.muted ? ', ЗАГЛУШЕНА' : '') + (tr.enabled ? '' : ', выкл') : ', дорожки нет') +
+        (ctx ? ', звук ' + ctx.state : ''));
+      if (tr) { tr.onmute = () => mlog('дорожка заглушена'); tr.onunmute = () => mlog('дорожка ожила'); tr.onended = () => mlog('дорожка кончилась'); }
       const type = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm']
         .find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || '';
       const chunks = [];
       let rec;
       try {
         rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
-      } catch (e) { stream.getTracks().forEach(t => t.stop()); vc = null; micMiss(); return;
+      } catch (e) { mlog('MediaRecorder: ' + e.name); stream.getTracks().forEach(t => t.stop()); vc = null; micMiss(); showMicLog(); return;
       }
       rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
       rec.start(250);
@@ -476,7 +514,7 @@
             else if (spoke) { if (!quietSince) quietSince = now; else if (now - quietSince > VOICE_QUIET) finish(); }
             if (!spoke && now - began > VOICE_NOSPEECH) finish();
           }, 100);
-        } catch (e) { }
+        } catch (e) { mlog('замер: ' + e.name); }
       }
 
       let done = false;
@@ -491,17 +529,20 @@
           if (ctx) { try { ctx.close(); } catch {} }
           setMic(false);
           const blob = new Blob(chunks, { type: rec.mimeType || type || 'audio/mp4' });
-          if (peak < 0.01) { vc = null; micMiss(); return; }
+          mlog('записано ' + (blob.size / 1024).toFixed(1) + ' КБ за ' + ((performance.now() - began) / 1000).toFixed(1) + ' с, пик ' + (peak * 100).toFixed(1) + '%' + (ctx ? ', звук ' + ctx.state : ''));
+          if (peak < 0.01) { mlog('✕ тишина'); vc = null; micMiss(); showMicLog(); return; }
           voiceSend(blob, n);
         };
         try { rec.stop(); } catch { rec.onstop(); }
       }
       vc = { finish };
     }).catch(e => {
+      mlog('микрофон не дан: ' + e.name + ' — ' + e.message);
       if (ctx) { try { ctx.close(); } catch {} }
       vc = null;
       setMic(false);
       micMiss();
+      showMicLog();
     });
   }
 
@@ -524,12 +565,15 @@
       if (!ok || !d || typeof d.text !== 'string') {
         const err = (d && d.error) || 'ошибка';
         /* Голос к Сове пока закрыт — до конца сеанса слушаем через Safari. */
-        if (err === 'voice_needs_https' || err === 'sova_key') { voiceDown = true; }
+        mlog('посредник: ' + err);
+        if (err === 'voice_needs_https' || err === 'sova_key') { voiceDown = true; mlog('дальше — распознавание Safari'); }
         micMiss();
+        showMicLog();
         return;
       }
       const said = d.text.trim();
-      if (!said) { micMiss(); return; }
+      mlog('#' + n + ' распознано: ' + (said ? '«' + said.slice(0, 40) + '»' : 'пусто'));
+      if (!said) { micMiss(); showMicLog(); return; }
       micHeard = true;
       state.smartText = micBefore ? micBefore + ' ' + said : said;
       const el = state.tab === 'today' ? currentScreen() : null;
@@ -539,9 +583,11 @@
       patchSmart(el);
       sovaSchedule(state.smartText);
     }).catch(e => {
+      mlog('отправка: ' + (e && e.name));
       vc = null;
       setSovaBusy(false);
       micMiss();
+      showMicLog();
     });
   }
 
@@ -557,6 +603,7 @@
   function micToggle() {
     /* Разбор через Сову включён — голос пишем сами и отдаём ей. Иначе —
        распознавание Safari: на iPhone оно слышит только в первый раз. */
+    mlog('нажатие: ' + (voiceOn() ? 'своя запись' : 'Safari') + (vc ? ', запись идёт — стоп' : ''));
     if (voiceOn()) { voiceToggle(); return; }
     /* Остановили сами, а текста так и не было — это тоже неудача: показываем журнал. */
     if (state.mic || micStarting) { stopMic(!micHeard); return; }
@@ -1065,6 +1112,18 @@
       if (si) {
         si.addEventListener('input', () => { state.smartText = si.value; sovaSchedule(si.value); patchSmart(el); });
         si.addEventListener('keydown', e => { if (e.key === 'Enter') { si.blur(); saveSmart(el.querySelector('.commit')); } });
+      }
+      /* Долгое нажатие на микрофон открывает журнал, не запуская записи. */
+      const mb = el.querySelector('.mic');
+      if (mb) {
+        let lp = 0;
+        const cancel = () => clearTimeout(lp);
+        mb.addEventListener('pointerdown', () => {
+          cancel();
+          lp = setTimeout(() => { micSkipClick = true; showMicLog(); }, 650);
+        });
+        ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => mb.addEventListener(t, cancel));
+        mb.addEventListener('contextmenu', e => e.preventDefault());
       }
       const inp = el.querySelector('#exp-name');
       if (inp) {
@@ -1643,7 +1702,7 @@
       case 'save': saveExpense(act); break;
       case 'save-smart': saveSmart(act); break;
       case 'smart-cat': openSmartCat(); break;
-      case 'mic': micToggle(); break;
+      case 'mic': if (micSkipClick) { micSkipClick = false; break; } micToggle(); break;
       case 'bk-save': backupSave(act); break;
       case 'row-cat': openRowCat(act.dataset.id); break;
       case 'bk-later': state.data.backupSnooze = dayKey(new Date()); persist(); rerender(); break;
