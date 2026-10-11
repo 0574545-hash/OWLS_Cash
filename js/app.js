@@ -1170,7 +1170,7 @@
       M.once(card, 'nudge');
       const bar = card.querySelector('.wk-b.now');
       if (bar) bar.animate([{ transform: 'scaleY(.35)' }, { transform: 'scaleY(1)' }],
-        { duration: 480, easing: 'cubic-bezier(.2,.9,.3,1.25)' });
+        { duration: 480, easing: 'cubic-bezier(.25,1,.5,1)' });
     };
     n.textContent = fmt(before);
     const t = n.getBoundingClientRect();
