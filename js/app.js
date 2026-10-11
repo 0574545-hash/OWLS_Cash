@@ -1161,6 +1161,38 @@
     }
   }
 
+  /* Полёт плашки по дуге из точки from в центр прямоугольника to. */
+  function flyChip(chip, from, to, delay, onLand) {
+    document.body.appendChild(chip);
+    const c = chip.getBoundingClientRect();
+    const x0 = from.left + from.width / 2 - c.width / 2, y0 = from.top + from.height / 2 - c.height / 2;
+    const dx = to.left + to.width / 2 - c.width / 2 - x0, dy = to.top + to.height / 2 - c.height / 2 - y0;
+    chip.style.left = x0 + 'px';
+    chip.style.top = y0 + 'px';
+    chip.animate([
+      { transform: 'translate(0,0) scale(.8)', opacity: 0 },
+      { transform: `translate(${(dx * 0.3).toFixed(1)}px, ${(dy * 0.3 - 36).toFixed(1)}px) scale(1.06)`, opacity: 1, offset: 0.3 },
+      { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(.5)`, opacity: 0.15 }
+    ], { duration: 580, delay, fill: 'backwards', easing: 'cubic-bezier(.45,0,.25,1)' }).onfinish = () => { chip.remove(); onLand(); };
+  }
+  const onScreen = r => r.bottom > 0 && r.top < innerHeight;
+
+  /* Значок категории — в «Историю»: новая запись там первая, она появляется, когда значок долетел. */
+  function flyToHistory(from, catId) {
+    const first = document.querySelector('[data-act="open-history"] .rec-i');
+    const ic = first && first.querySelector('.rec-ic');
+    if (!first || !ic || !from) return;
+    const pop = () => first.animate([{ transform: 'scale(.6)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }],
+      { duration: 320, easing: 'cubic-bezier(.25,1,.5,1)' });
+    const t = ic.getBoundingClientRect();
+    if (!onScreen(t)) { pop(); return; }
+    first.style.opacity = '0';
+    const chip = document.createElement('span');
+    chip.className = 'fly-cat';
+    chip.innerHTML = svg(catIcon(catId), 18, 1.8);
+    flyChip(chip, from, t, 60, () => { first.style.opacity = ''; pop(); });
+  }
+
   function flyToDash(from, amount, before) {
     const card = document.getElementById('card-today');
     const n = card && card.querySelector('.num .n');
@@ -1174,21 +1206,11 @@
     };
     n.textContent = fmt(before);
     const t = n.getBoundingClientRect();
-    if (!from || t.bottom < 0 || t.top > innerHeight) { land(); return; }   // карточку прокрутили — просто докрутить
+    if (!from || !onScreen(t)) { land(); return; }   // карточку прокрутили — просто докрутить
     const chip = document.createElement('span');
     chip.className = 'fly-sum';
     chip.textContent = '+' + fmt(amount) + ' ₽';
-    document.body.appendChild(chip);
-    const c = chip.getBoundingClientRect();
-    const x0 = from.left + from.width / 2 - c.width / 2, y0 = from.top + from.height / 2 - c.height / 2;
-    const dx = t.left + t.width / 2 - c.width / 2 - x0, dy = t.top + t.height / 2 - c.height / 2 - y0;
-    chip.style.left = x0 + 'px';
-    chip.style.top = y0 + 'px';
-    chip.animate([
-      { transform: 'translate(0,0) scale(.8)', opacity: 0 },
-      { transform: `translate(${(dx * 0.3).toFixed(1)}px, ${(dy * 0.3 - 36).toFixed(1)}px) scale(1.06)`, opacity: 1, offset: 0.3 },
-      { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(.5)`, opacity: 0.15 }
-    ], { duration: 580, easing: 'cubic-bezier(.45,0,.25,1)' }).onfinish = () => { chip.remove(); land(); };
+    flyChip(chip, from, t, 0, land);
   }
 
   /* Общий конец внесения: всплеск сразу, полёт — когда экран уже перерисован. */
@@ -1215,7 +1237,7 @@
       persist();
       state.amount = ''; state.cat = null; state.comment = ''; state.pad = false;
       rerender();
-      if (from) flyToDash(from, amount, before);
+      if (from) { flyToDash(from, amount, before); flyToHistory(from, row.catId); }
       else M.once(document.getElementById('card-today'), 'nudge');
     };
     if (!btn || M.reduced()) { commit(); return; }
@@ -1254,7 +1276,7 @@
       sovaForget();
       state.smartCat = null;
       rerender();
-      if (from) flyToDash(from, row.amount, before);
+      if (from) { flyToDash(from, row.amount, before); flyToHistory(from, row.catId); }
       else M.once(document.getElementById('card-today'), 'nudge');
     };
     if (!btn || M.reduced()) { commit(); return; }
