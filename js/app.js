@@ -499,7 +499,7 @@
     const AC = window.AudioContext || window.webkitAudioContext;
     let ctx = null;
     try { ctx = new AC(); if (ctx.state === 'suspended') ctx.resume(); } catch { ctx = null; }
-    micBefore = state.smartText.trim();
+    micBefore = fieldText();
     const t0 = performance.now();
     navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
       const type = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm']
@@ -591,10 +591,13 @@
       const said = d.text.trim();
       if (!said) { micMiss(); return; }
       micHeard = true;
-      state.smartText = micBefore ? micBefore + ' ' + said : said;
+      /* Дописываем к тому, что видно в поле сейчас: на iPhone сохранённая копия
+         строки к этому моменту бывала пустой, и первая фраза пропадала. */
       const el = state.tab === 'today' ? currentScreen() : null;
+      const si = el && el.querySelector('#smart-in');
+      const base = (si && si.value.trim()) || micBefore;
+      state.smartText = base ? base + ' ' + said : said;
       if (!el) return;
-      const si = el.querySelector('#smart-in');
       if (si) si.value = state.smartText;
       patchSmart(el);
       sovaSchedule(state.smartText);
@@ -642,6 +645,15 @@
     b.addEventListener('animationend', () => b.classList.remove('go', 'stop'), { once: true });
   }
 
+  /* Текст до записи — из самого поля: то, что человек видит, главнее копии в памяти. */
+  function fieldText() {
+    const el = state.tab === 'today' ? currentScreen() : null;
+    const si = el && el.querySelector('#smart-in');
+    const v = ((si && si.value) || state.smartText || '').trim();
+    state.smartText = v;
+    return v;
+  }
+
   function micToggle() {
     micTapFx(!(vc || state.mic || micStarting));
     /* Разбор через Сову включён — голос пишем сами и отдаём ей. Иначе —
@@ -651,7 +663,7 @@
     if (state.mic || micStarting) { stopMic(!micHeard); return; }
     if (!micOk()) return;
     /* Текст, который был до начала записи: распознанное дописываем к нему. */
-    micBefore = state.smartText.trim();
+    micBefore = fieldText();
     micHeard = false;
     micStart(false);
   }
