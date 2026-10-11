@@ -447,12 +447,15 @@
 .in-wrap:has(.smart-in:placeholder-shown) .eq i{width:4px}
 /* Пустое поле — без примера. Пробел в placeholder нужен, чтобы :placeholder-shown отличал пустое поле (эквалайзер по центру). */
 
-/* Зовём к полю, пока оно пустое, без курсора и без записи.
-   Рамка дышит: оранжевый цвет и мягкая тень набираются и гаснут за 2,6 с.
-   Микрофон в том же ритме: на пике вдоха от него расходится волна — можно сказать голосом. */
-.in-wrap:has(.smart-in:placeholder-shown:not(:focus)):not(:has(.eq)) .smart-in{animation:field-breath 2.6s ease-in-out infinite .6s}
-@keyframes field-breath{0%,100%{border-color:var(--line);box-shadow:0 0 0 0 rgba(242,99,54,0),inset 0 0 0 0 rgba(242,99,54,0)}50%{border-color:rgba(242,99,54,.8);box-shadow:0 0 0 4px rgba(242,99,54,.16),inset 0 0 0 4px rgba(242,99,54,.16)}}
-/* Волна микрофона в такт рамке: тот же период и старт, уходит на пике вдоха. */
-.in-wrap:has(.smart-in:placeholder-shown:not(:focus)) .mic:not(.on):not(.arm):not(.go):not(.stop):not(.miss){animation:mic-call 2.6s ease-out infinite .6s}
+/* Зовём к полю, пока оно пустое, без курсора и без записи. Обе анимации — на одном
+   контейнере (рамка — ::before поверх поля, волна — ::after на месте микрофона),
+   поэтому стартуют в один момент и всегда идут в такт: рамка дышит, на пике вдоха
+   от микрофона уходит волна. Период 2,6 с. Ореол рамки — наполовину внутрь, наполовину наружу. */
+.in-wrap::before,.in-wrap::after{content:'';position:absolute;pointer-events:none;opacity:0}
+.in-wrap::before{inset:0;border-radius:var(--r-btn);border:1px solid transparent}
+.in-wrap::after{right:8px;top:50%;width:38px;height:38px;margin-top:-19px;border-radius:50%}
+.in-wrap:has(.smart-in:placeholder-shown:not(:focus)):not(:has(.eq, .mic.on, .mic.arm))::before{opacity:1;animation:field-breath 2.6s ease-in-out infinite .6s}
+.in-wrap:has(.smart-in:placeholder-shown:not(:focus)):not(:has(.eq, .mic.on, .mic.arm))::after{opacity:1;animation:mic-call 2.6s ease-out infinite .6s}
+@keyframes field-breath{0%,100%{border-color:rgba(242,99,54,0);box-shadow:0 0 0 0 rgba(242,99,54,0),inset 0 0 0 0 rgba(242,99,54,0)}50%{border-color:rgba(242,99,54,.8);box-shadow:0 0 0 4px rgba(242,99,54,.16),inset 0 0 0 4px rgba(242,99,54,.16)}}
 @keyframes mic-call{0%,40%{box-shadow:0 0 0 0 rgba(242,99,54,0)}50%{box-shadow:0 0 0 0 rgba(242,99,54,.5)}88%,100%{box-shadow:0 0 0 16px rgba(242,99,54,0)}}
-@media (prefers-reduced-motion:reduce){.in-wrap .smart-in,.in-wrap .mic{animation:none!important}}
+@media (prefers-reduced-motion:reduce){.in-wrap::before,.in-wrap::after{animation:none!important;opacity:0!important}}
