@@ -463,6 +463,7 @@
     if (!said) return;
     micHeard = true;
     state.smartText = micBefore ? micBefore + ' ' + said : said;
+    lastVoice = state.smartText;
     const el = state.tab === 'today' ? currentScreen() : null;
     if (!el) return;
     const si = el.querySelector('#smart-in');
@@ -597,6 +598,7 @@
       const si = el && el.querySelector('#smart-in');
       const base = (si && si.value.trim()) || micBefore;
       state.smartText = base ? base + ' ' + said : said;
+      lastVoice = state.smartText;
       if (!el) return;
       if (si) si.value = state.smartText;
       patchSmart(el);
@@ -645,12 +647,23 @@
     b.addEventListener('animationend', () => b.classList.remove('go', 'stop'), { once: true });
   }
 
-  /* Текст до записи — из самого поля: то, что человек видит, главнее копии в памяти. */
+  /* Текст до записи — из самого поля. Если в поле ровно прошлый результат голоса
+     (его не правили), новая запись его заменяет: повторное нажатие = «перезаписать».
+     Поле очищается сразу, эквалайзер встаёт на место примера. Исправленное руками
+     не стираем — новая фраза допишется. */
+  let lastVoice = '';
   function fieldText() {
     const el = state.tab === 'today' ? currentScreen() : null;
     const si = el && el.querySelector('#smart-in');
-    const v = ((si && si.value) || state.smartText || '').trim();
+    let v = ((si && si.value) || state.smartText || '').trim();
+    if (v && v === lastVoice) {
+      v = '';
+      if (si) si.value = '';
+      sovaForget();
+      state.smartCat = null;
+    }
     state.smartText = v;
+    if (el) patchSmart(el);
     return v;
   }
 
