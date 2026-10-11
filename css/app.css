@@ -445,3 +445,13 @@
 .in-wrap:has(.eq.in) .smart-in::placeholder{color:transparent}
 .in-wrap:has(.smart-in:placeholder-shown) .eq{top:50%;bottom:auto;height:30px;margin-top:-15px;left:16px;right:62px}
 .in-wrap:has(.smart-in:placeholder-shown) .eq i{width:4px}
+/* Вместо примера в пустом поле — тучка, бьётся как сердце: два толчка и пауза.
+   Печатают — уходит, запись — на её месте эквалайзер. Пробел в placeholder нужен,
+   чтобы :placeholder-shown отличал пустое поле. */
+.ph-cloud{position:absolute;left:15px;top:50%;margin-top:-13px;width:26px;height:26px;color:var(--accent);opacity:0;pointer-events:none;transition:opacity .2s ease-out}
+.in-wrap:has(.smart-in:placeholder-shown) .ph-cloud{opacity:.75;animation:heartbeat 1.4s ease-in-out infinite}
+.in-wrap:has(.eq) .ph-cloud{opacity:0;animation:none}
+.ph-cloud svg{display:block}
+@keyframes heartbeat{0%,40%,100%{scale:1}10%{scale:1.16}20%{scale:1}30%{scale:1.1}}
+@media (prefers-reduced-motion:reduce){.in-wrap:has(.smart-in:placeholder-shown) .ph-cloud{animation:none}}
+.in-wrap:has(.smart-in:focus) .ph-cloud{opacity:0;animation:none}
