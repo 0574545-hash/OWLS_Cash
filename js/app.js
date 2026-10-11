@@ -1060,7 +1060,6 @@
       <div class="form-h"><span class="form-t">Новый расход</span></div>
       <div class="field">
         <div class="in-wrap">
-          <span class="ph-cloud" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg></span>
           <input id="smart-in" class="smart-in${micOk() ? ' with-mic' : ''}" type="text" value="${esc(state.smartText)}" placeholder=" "
                  autocomplete="off" autocapitalize="sentences" enterkeyhint="done" maxlength="80" aria-label="Сумма и описание одной строкой">
           ${micOk() ? `<button type="button" class="mic${state.mic ? ' on' : ''}" data-act="mic"
