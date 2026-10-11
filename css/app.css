@@ -432,3 +432,11 @@
 .p-swap{animation:p-swap .22s var(--ease-out)}
 @keyframes p-swap{from{opacity:.25;transform:translateY(3px)}}
 @media (prefers-reduced-motion:reduce){.p-swap{animation:none}}
+
+/* Эквалайзер записи: тонкая полоса столбиков внизу поля, слева от микрофона. */
+.eq{position:absolute;left:14px;right:60px;bottom:8px;height:16px;display:flex;align-items:center;justify-content:space-between;pointer-events:none;opacity:0;transition:opacity .2s ease-out}
+.eq.in{opacity:1}
+.eq i{width:3px;height:100%;border-radius:2px;background:var(--accent);transform:scaleY(.12);transition:transform 70ms linear}
+.eq.fake i{animation:eq-breath 1.1s ease-in-out infinite alternate;animation-delay:calc(var(--i) * -83ms)}
+@keyframes eq-breath{from{transform:scaleY(.15)}to{transform:scaleY(.7)}}
+@media (prefers-reduced-motion:reduce){.eq.fake i{animation:none;transform:scaleY(.3)}}

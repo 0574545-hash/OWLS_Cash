@@ -521,7 +521,9 @@
         try {
           const an = ctx.createAnalyser();
           an.fftSize = 2048;
+          an.smoothingTimeConstant = 0.55;
           ctx.createMediaStreamSource(stream).connect(an);
+          eqStart(an);   // полоска в поле теперь слушает настоящий звук
           const buf = new Float32Array(an.fftSize);
           meter = setInterval(() => {
             an.getFloatTimeDomainData(buf);
@@ -725,6 +727,62 @@
     if (was && miss) micMiss();
   }
 
+  /* ---------- эквалайзер в поле ----------
+     Пока идёт запись, внизу поля бегут столбики. При своей записи они берут
+     громкость из анализатора (полосы речи 90–4000 Гц), у Safari звука нет —
+     столбики просто дышат. */
+  const EQ_N = 26;
+  let eqAn = null, eqRaf = 0;
+  function eqEl() {
+    const el = state.tab === 'today' ? currentScreen() : null;
+    const wrap = el && el.querySelector('.in-wrap');
+    if (!wrap) return null;
+    let eq = wrap.querySelector('.eq');
+    if (!eq) {
+      eq = document.createElement('div');
+      eq.className = 'eq';
+      eq.setAttribute('aria-hidden', 'true');
+      eq.innerHTML = Array.from({ length: EQ_N }, (_, i) => `<i style="--i:${i}"></i>`).join('');
+      wrap.appendChild(eq);
+      requestAnimationFrame(() => eq.classList.add('in'));
+    }
+    return eq;
+  }
+  function eqStart(an) {
+    eqAn = an || null;
+    const eq = eqEl();
+    if (!eq) return;
+    eq.classList.toggle('fake', !eqAn);
+    cancelAnimationFrame(eqRaf);
+    if (!eqAn || M.reduced()) return;
+    const bins = new Uint8Array(eqAn.frequencyBinCount);
+    const hz = eqAn.context.sampleRate / 2 / eqAn.frequencyBinCount;
+    /* Границы полос по логарифму: низы речи шире на экране, чем верха. */
+    const edge = Array.from({ length: EQ_N + 1 }, (_, i) => Math.max(1, Math.round(90 * Math.pow(4000 / 90, i / EQ_N) / hz)));
+    const bars = [...eq.children];
+    const tick = () => {
+      if (!eqAn) return;
+      if (!eq.isConnected) { eqStart(eqAn); return; }   // экран перерисовали — полоска переезжает в новое поле
+      eqAn.getByteFrequencyData(bins);
+      for (let i = 0; i < EQ_N; i++) {
+        let m = 0;
+        for (let b = edge[i]; b <= Math.max(edge[i], edge[i + 1] - 1); b++) m = Math.max(m, bins[b] || 0);
+        const v = Math.max(0.12, Math.min(1, (m - 70) / 150));
+        bars[i].style.transform = 'scaleY(' + v.toFixed(2) + ')';
+      }
+      eqRaf = requestAnimationFrame(tick);
+    };
+    eqRaf = requestAnimationFrame(tick);
+  }
+  function eqStop() {
+    eqAn = null;
+    cancelAnimationFrame(eqRaf);
+    document.querySelectorAll('.in-wrap .eq').forEach(eq => {
+      eq.classList.remove('in');
+      setTimeout(() => eq.remove(), 220);
+    });
+  }
+
   /* Мигание кнопки: меняем только цвет, сдвиг сбил бы её с места. */
   function micMiss() {
     const el = state.tab === 'today' ? currentScreen() : null;
@@ -744,6 +802,7 @@
     if (b) b.classList.remove('arm');   // мгновенная подсветка нажатия своё отработала
     if (state.mic === on) return;
     state.mic = on;
+    if (on) { if (!eqAn) eqStart(null); } else eqStop();
     if (!b) return;
     b.classList.toggle('on', on);
     b.setAttribute('aria-pressed', String(on));
