@@ -599,6 +599,7 @@
       const base = (si && si.value.trim()) || micBefore;
       state.smartText = base ? base + ' ' + said : said;
       lastVoice = state.smartText;
+      haptic('light');
       if (!el) return;
       if (si) si.value = state.smartText;
       patchSmart(el);
@@ -623,8 +624,13 @@
      переключатель (iOS 18) щёлкает сам — дёргаем невидимый. Android — вибрация.
      Работает только внутри нажатия. */
   let hapEl = null;
-  function haptic() {
-    if (navigator.vibrate) { try { navigator.vibrate(12); } catch {} return; }
+  /* В приложении из App Store (OWLS DAY в WebView) вибрацию делает оно: window.top.OWLS_NATIVE.
+     Cash там живёт в рамке того же сайта, поэтому мост берём у верхнего окна. */
+  const nativeWin = () => { try { const t = window.top; return t && t.OWLS_NATIVE && t.ReactNativeWebView ? t : null; } catch { return null; } };
+  function haptic(kind) {
+    const nw = nativeWin();
+    if (nw) { try { nw.ReactNativeWebView.postMessage(JSON.stringify({ t: 'haptic', k: kind || 'light' })); } catch {} return; }
+    if (navigator.vibrate) { try { navigator.vibrate(kind === 'success' ? [18, 30, 42] : kind === 'warning' ? [40] : 12); } catch {} return; }
     if (!hapEl) {
       hapEl = document.createElement('label');
       hapEl.setAttribute('aria-hidden', 'true');
@@ -636,7 +642,7 @@
   }
   /* Мгновенный отклик кнопки на нажатие: включаем — темнеет и волна, выключаем — схлопывается. */
   function micTapFx(starting) {
-    haptic();
+    haptic(starting ? 'medium' : 'light');
     const el = state.tab === 'today' ? currentScreen() : null;
     const b = el && el.querySelector('.mic');
     if (!b) return;
@@ -810,6 +816,7 @@
 
   /* Мигание кнопки: меняем только цвет, сдвиг сбил бы её с места. */
   function micMiss() {
+    haptic('warning');
     const el = state.tab === 'today' ? currentScreen() : null;
     const b = el && el.querySelector('.mic');
     if (!b) return;
@@ -1237,7 +1244,7 @@
       el.querySelectorAll('.ring-p').forEach(p => M.count(p, 0, +p.dataset.pct, n => n + '%'));
     }
     if (tab === 'history') {
-      el.querySelectorAll('.row.hold').forEach(r => M.hold(r, { duration: 650, onComplete: () => removeExpense(r.dataset.id, r) }));
+      el.querySelectorAll('.row.hold').forEach(r => M.hold(r, { duration: 650, onComplete: () => { haptic('heavy'); removeExpense(r.dataset.id, r); } }));
     }
     if (tab === 'today') {
       const si = el.querySelector('#smart-in');
@@ -1420,6 +1427,7 @@
     };
     if (!btn || M.reduced()) { commit(); return; }
     from = celebrate(btn);
+    haptic('success');
     saving = true;
     btn.classList.add('saving');
     const label = btn.querySelector('.commit-t');
@@ -1459,6 +1467,7 @@
     };
     if (!btn || M.reduced()) { commit(); return; }
     from = celebrate(btn);
+    haptic('success');
     savingSmart = true;
     btn.classList.add('saving');
     const label = btn.querySelector('.commit-t');
@@ -1517,6 +1526,13 @@
   /* На iPhone файл уходит через «Поделиться», иначе обычной загрузкой.
      Возвращает false, если окно «Поделиться» закрыли. */
   async function deliverFile(blob, name) {
+    /* В приложении файл отдаём WebView — оно откроет системное «Поделиться». */
+    const nw = nativeWin();
+    if (nw) {
+      const b64 = await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] || ''); r.onerror = no; r.readAsDataURL(blob); });
+      nw.ReactNativeWebView.postMessage(JSON.stringify({ t: 'file', name, mime: blob.type || 'application/json', b64 }));
+      return true;
+    }
     const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     if (ios && navigator.canShare) {
       const file = new File([blob], name, { type: blob.type });
@@ -1642,7 +1658,7 @@
     const list = overlay.querySelector('#catlist');
     list.querySelectorAll('.del.hold').forEach(b => M.hold(b, {
       duration: 800,
-      onComplete: () => { deleteCategoryById(b.dataset.id); }
+      onComplete: () => { haptic('heavy'); deleteCategoryById(b.dataset.id); }
     }));
     M.sortable(list, { handle: '[data-grip]', row: '.crow', onChange: ids => {
       ids.forEach((id, i) => { const c = catById(id); if (c) c.order = i; });
@@ -1978,6 +1994,7 @@
       case 'close-learned': closeLearned(); break;
       case 'close-smartcat': closeSmartCat(); break;
       case 'smartcat-pick': {
+        haptic('selection');
         state.smartCat = (state.smartCat === act.dataset.id) ? null : act.dataset.id;
         /* Выбор виден мгновение до закрытия: кружок загорается, потом соты уходят. */
         sheetHost.querySelectorAll('.cat').forEach(b => b.classList.toggle('on', b.dataset.id === state.smartCat));
