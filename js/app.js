@@ -1521,7 +1521,7 @@
     if (ios && navigator.canShare) {
       const file = new File([blob], name, { type: blob.type });
       if (navigator.canShare({ files: [file] })) {
-        try { await navigator.share({ files: [file], title: name }); return true; }
+        try { await navigator.share({ files: [file] }); return true; }   // без title: иначе рядом ложится «текст N.txt»
         catch (_) { return false; }
       }
     }
