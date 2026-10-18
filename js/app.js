@@ -1982,34 +1982,44 @@
   async function sovaImage(file) {
     if (!(state.data.sova && state.data.sovaUrl)) throw new Error('Скриншоты читает Сова. Включите её в настройках, в разделе умного ввода.');
     const b64 = await shrinkImage(file);
-    const ctl = new AbortController();
-    const stop = setTimeout(() => ctl.abort(), 90000);
-    let res, d = {};
-    try {
-      res = await fetch(state.data.sovaUrl.replace(/\/+$/, ''), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctl.signal,
-        body: JSON.stringify({ image: b64 })
-      });
-      d = await res.json().catch(() => ({}));
-    } catch { throw new Error('Сова не ответила. Проверьте интернет и попробуйте ещё раз.'); }
-    finally { clearTimeout(stop); }
+    /* Сервер общий и бывает занят или перезагружается: при сбое один повтор
+       через 6 с, как велят правила Совы. Неверный ключ (sova_key) не повторяем. */
+    const ask = async () => {
+      const ctl = new AbortController();
+      const stop = setTimeout(() => ctl.abort(), 120000);
+      try {
+        const r = await fetch(state.data.sovaUrl.replace(/\/+$/, ''), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctl.signal,
+          body: JSON.stringify({ image: b64 })
+        });
+        return { res: r, d: await r.json().catch(() => ({})) };
+      } catch { return { res: null, d: {} }; }
+      finally { clearTimeout(stop); }
+    };
+    let { res, d } = await ask();
+    if ((!res || res.status >= 500) && d.error !== 'sova_key') {
+      await new Promise(r => setTimeout(r, 6000));
+      ({ res, d } = await ask());
+    }
+    if (!res) throw new Error('Сова не ответила. Проверьте интернет и попробуйте ещё раз.');
     if (!res.ok || typeof d.text !== 'string') {
       /* empty_text — посредник ещё старый и картинку не понимает: для человека это то же самое. */
       throw new Error(d.error === 'no_vision' || d.error === 'empty_text'
         ? 'Сова пока не умеет читать картинки: на её сервере нет модели для изображений. А пока можно выделить текст на скриншоте и вставить его в поле умного ввода.'
-        : 'Сова не смогла прочитать скриншот. Попробуйте ещё раз.');
+        : d.error === 'sova_key' ? 'Сова не пускает: ключ посредника не подошёл. Это настройка сервера, повтор не поможет.'
+        : 'Сова сейчас недоступна или занята. Попробуйте через минуту.');
     }
     const r = Imp.opsFromText(d.text);
     return { kind: 'image', bank: r.bank, ops: r.ops };
   }
-  /* Скриншот уменьшаем до 1600 точек по длинной стороне: Сове хватает, а летит быстрее. */
+  /* Скриншот уменьшаем до 1280 точек по длинной стороне — предел для картинок у Совы. */
   async function shrinkImage(file) {
     const url = URL.createObjectURL(file);
     try {
       const img = new Image();
       img.src = url;
       await img.decode();
-      const k = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+      const k = Math.min(1, 1280 / Math.max(img.naturalWidth, img.naturalHeight));
       const c = document.createElement('canvas');
       c.width = Math.round(img.naturalWidth * k);
       c.height = Math.round(img.naturalHeight * k);
