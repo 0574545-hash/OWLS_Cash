@@ -9,6 +9,8 @@
  * Выкладка:
  *   1. dash.cloudflare.com → Workers & Pages → Create → Worker, вставить этот файл.
  *   2. Settings → Variables: SOVA_URL — вход к Сове: https://<адрес>:8443/ollama
+ *                            SOVA_VISION_MODEL — модель Ollama, понимающая картинки (например qwen2.5vl:7b);
+ *                              без неё скриншоты выписок не читаются, приложение так и скажет
  *                            SOVA_KEY — ключ проекта для HTTPS-входа (выдаёт владелец сервера)
  *                            SPEECH_URL — https://<адрес>:8443/speech, распознавание речи
  *                            SPEECH_KEY — ключ службы речи (идёт в Authorization: Bearer)
@@ -19,7 +21,8 @@
  *      https://owls-sova.<ваш>.workers.dev/<PATH_TOKEN> — целиком, с путём.
  *
  * Метод у воркера без пароля, поэтому вход ограничен: только POST /parse,
- * только с разрешённых адресов страницы, строка до 200 знаков, 40 категорий.
+ * только с разрешённых адресов страницы, строка до 200 знаков, 40 категорий,
+ * картинка до 3 МБ.
  * В панели Cloudflare стоит добавить правило ограничения частоты на /parse.
  */
 
@@ -39,7 +42,22 @@ const SYSTEM = `Ты разбираешь короткую запись о ра�
 const MAX_TEXT = 200;
 const MAX_AUDIO = 2_000_000; // base64 записи с телефона — с большим запасом для фразы
 const MAX_CATS = 40;
+const MAX_IMAGE = 3_000_000; // base64 скриншота, уменьшенного на телефоне до 1600 точек
 const SOVA_TIMEOUT_MS = 12000;
+const VISION_TIMEOUT_MS = 90000;
+
+/* Скриншот банка: модель только переписывает операции строками,
+   разбор сумм и статей делает само приложение. */
+const VISION = `На картинке — список операций из банковского приложения или выписка.
+Перепиши КАЖДУЮ операцию отдельной строкой ровно в таком виде:
+дата | название | тип операции | сумма
+Правила:
+- дата — ДД.ММ.ГГГГ; если над операциями написано «Сегодня» или «Вчера», пиши это слово; не видно даты — пиши «Сегодня».
+- название — как на картинке (магазин, человек, счёт).
+- тип — подпись под названием («Оплата товаров и услуг», «Клиенту Сбера», «Пополнение брокерского счета»); нет — оставь пустым.
+- сумма — цифрами, как на картинке; поступления со знаком +, списания без знака.
+- Остатки по счёту, итоги за день, рекламу и уведомления без суммы не пиши.
+- Ничего, кроме этих строк.`;
 
 export default {
   async fetch(request, env) {
@@ -79,6 +97,25 @@ export default {
       return json({ text }, 200, cors);
     }
 
+    /* Скриншот: нужна модель, которая понимает картинки (SOVA_VISION_MODEL). */
+    if (typeof body?.image === 'string') {
+      if (!env.SOVA_VISION_MODEL) return json({ error: 'no_vision' }, 501, cors);
+      if (!body.image || body.image.length > MAX_IMAGE || !/^[A-Za-z0-9+/=]+$/.test(body.image.slice(0, 200))) return json({ error: 'bad_image' }, 400, cors);
+      let seen;
+      try {
+        seen = await ollamaChat(env.SOVA_URL, env.SOVA_KEY, {
+          model: env.SOVA_VISION_MODEL,
+          stream: false,
+          options: { temperature: 0, num_predict: 1500 },
+          messages: [{ role: 'user', content: VISION, images: [body.image] }],
+        }, VISION_TIMEOUT_MS);
+      } catch (e) {
+        const code = e.message === 'timeout' ? 'timeout' : e.message === 'http_401' ? 'sova_key' : 'sova_unavailable';
+        return json({ error: code }, 503, cors);
+      }
+      return json({ text: String(seen || '').slice(0, 8000) }, 200, cors);
+    }
+
     const text = String(body?.text ?? '').trim().slice(0, MAX_TEXT);
     if (!text) return json({ error: 'empty_text' }, 400, cors);
 
@@ -116,8 +153,7 @@ export default {
    не доходит. Сокет такого ограничения не имеет, и адрес остаётся в секрете —
    заводить ради этого публичное доменное имя для Совы не нужно. */
 async function askSova(baseUrl, text, categories, key) {
-  const { secure, hostname, port, prefix } = parseEndpoint(baseUrl);
-  const payload = JSON.stringify({
+  return ollamaChat(baseUrl, key, {
     model: 'sova',
     stream: false,
     think: false, // обязательно: иначе модель тратит лимит на рассуждения и молчит
@@ -132,8 +168,13 @@ async function askSova(baseUrl, text, categories, key) {
       { role: 'system', content: SYSTEM + '\n\nСписок категорий: ' + categories.join(', ') },
       { role: 'user', content: text },
     ],
-  });
-  const body = new TextEncoder().encode(payload);
+  }, SOVA_TIMEOUT_MS);
+}
+
+/* Запрос к Ollama /api/chat по сокету. */
+async function ollamaChat(baseUrl, key, payloadObj, timeoutMs) {
+  const { secure, hostname, port, prefix } = parseEndpoint(baseUrl);
+  const body = new TextEncoder().encode(JSON.stringify(payloadObj));
   /* Origin не шлём: Ollama отвечает 403 на любой источник не из своего списка.
      Ключ — только в заголовке и только из секрета воркера. */
   const head =
@@ -147,7 +188,7 @@ async function askSova(baseUrl, text, categories, key) {
   /* HTTPS-вход шифруем: сертификат Let's Encrypt выписан на сам адрес,
      среда воркера проверяет его сама — отключать проверку нельзя. */
   const socket = connect({ hostname, port }, secure ? { secureTransport: 'on' } : undefined);
-  const timer = setTimeout(() => socket.close().catch(() => {}), SOVA_TIMEOUT_MS);
+  const timer = setTimeout(() => socket.close().catch(() => {}), timeoutMs);
   try {
     const writer = socket.writable.getWriter();
     await writer.write(new TextEncoder().encode(head));

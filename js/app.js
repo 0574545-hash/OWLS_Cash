@@ -1028,7 +1028,7 @@
         </button>
       </div>
       ${state.data.smart ? smartForm() : `<div class="card form cascade-item">
-        <div class="form-h"><span class="form-t">Новый расход</span><span class="form-hint">${formHint(has, can)}</span></div>
+        <div class="form-h"><span class="form-t">Новый расход</span><button type="button" class="imp-btn" data-act="import" aria-label="Загрузить выписку, таблицу или скриншот">${svg('upload', 14, 2)}Из файла</button></div>
         <div class="field amount-f">
           <div class="field-h"><span class="lbl">Сумма</span>${state.pad ? '<button type="button" class="done" data-act="done">Готово</button>' : ''}</div>
           <button type="button" class="amount${state.pad ? ' open' : ''}" data-act="focus" aria-label="Сумма, ${has ? fmt(parseInt(state.amount, 10)) : 0} рублей">
@@ -1067,8 +1067,9 @@
       <div class="form-h"><span class="form-t">Новый расход</span></div>
       <div class="field">
         <div class="in-wrap">
-          <input id="smart-in" class="smart-in${micOk() ? ' with-mic' : ''}" type="text" value="${esc(state.smartText)}" placeholder=" "
+          <input id="smart-in" class="smart-in with-att${micOk() ? ' with-mic' : ''}" type="text" value="${esc(state.smartText)}" placeholder=" "
                  autocomplete="off" autocapitalize="sentences" enterkeyhint="done" maxlength="80" aria-label="Сумма и описание одной строкой">
+          <button type="button" class="att${micOk() ? ' by-mic' : ''}" data-act="import" aria-label="Загрузить выписку, таблицу или скриншот">${svg('paperclip', 18, 1.8)}</button>
           ${micOk() ? `<button type="button" class="mic${state.mic ? ' on' : ''}" data-act="mic"
                   aria-label="${state.mic ? 'Остановить голосовой ввод' : 'Голосовой ввод'}" aria-pressed="${state.mic}">${svg('mic', 19, 1.9)}</button>` : ''}
         </div>
@@ -1251,6 +1252,17 @@
       if (si) {
         si.addEventListener('input', () => { state.smartText = si.value; sovaSchedule(si.value); patchSmart(el); });
         si.addEventListener('keydown', e => { if (e.key === 'Enter') { si.blur(); saveSmart(el.querySelector('.commit')); } });
+        /* Вставили несколько строк с суммами — это выписка, а не одна трата. */
+        si.addEventListener('paste', e => {
+          const t = e.clipboardData && e.clipboardData.getData('text/plain');
+          if (!t || !/\n/.test(t.trim())) return;
+          const r = Imp.looksLikeStatement(t);
+          if (!r) return;
+          e.preventDefault();
+          si.blur();
+          imp = { busy: true, name: '' };
+          setImportOps({ kind: 'text', bank: r.bank, ops: r.ops });
+        });
       }
       const inp = el.querySelector('#exp-name');
       if (inp) {
@@ -1925,6 +1937,261 @@
     openSettings();
   }
 
+  /* ================= загрузка выписки =================
+     Скриншот, PDF, Excel, CSV или вставленный текст — тип не выбирается,
+     его определяет importer.js по содержимому. Дальше лист проверки:
+     расходы с галочками и статьями, «не внесу» отдельно (поступления,
+     переводы себе, уже внесённое). Вносится только отмеченное. */
+  const Imp = window.OwlsImport;
+  let imp = null;   // { busy, name, kind, bank, ops, err, thumb, pick }
+  /* Слова, которые не стоит запоминать: форма собственности, страна, город. */
+  const LEGAL_W = /^(ип|ip|ооо|ooo|зао|zao|оао|пао|pao|llc|ltd|rus|russia|moscow|москва|spb|оплата|перевод|магазин)$/;
+  const KIND_T = { pdf: 'PDF-выписка', xlsx: 'таблица Excel', csv: 'таблица CSV', text: 'текст', image: 'скриншот' };
+
+  function pickImportFile() {
+    const inp = document.getElementById('import-input');
+    inp.value = '';
+    inp.click();
+  }
+  document.getElementById('import-input').addEventListener('change', e => {
+    const file = e.target.files && e.target.files[0];
+    if (file) importFile(file);
+  });
+
+  async function importFile(file) {
+    const job = imp = { busy: true, name: file.name || '' };
+    drawImport();
+    try {
+      let r = await Imp.readFile(file);
+      if (r.kind === 'image') {
+        job.kind = 'image';
+        job.thumb = URL.createObjectURL(file);
+        if (imp === job) drawImport();
+        r = await sovaImage(file);
+      }
+      if (imp === job) setImportOps(r);
+    } catch (err) {
+      if (imp !== job) return;
+      job.busy = false;
+      job.err = (err && err.message) || 'Файл не получилось прочитать.';
+      drawImport();
+    }
+  }
+
+  /* Картинку читает Сова: переписывает операции строками, разбор — здесь же. */
+  async function sovaImage(file) {
+    if (!(state.data.sova && state.data.sovaUrl)) throw new Error('Скриншоты читает Сова. Включите её в настройках, в разделе умного ввода.');
+    const b64 = await shrinkImage(file);
+    const ctl = new AbortController();
+    const stop = setTimeout(() => ctl.abort(), 90000);
+    let res, d = {};
+    try {
+      res = await fetch(state.data.sovaUrl.replace(/\/+$/, ''), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctl.signal,
+        body: JSON.stringify({ image: b64 })
+      });
+      d = await res.json().catch(() => ({}));
+    } catch { throw new Error('Сова не ответила. Проверьте интернет и попробуйте ещё раз.'); }
+    finally { clearTimeout(stop); }
+    if (!res.ok || typeof d.text !== 'string') {
+      /* empty_text — посредник ещё старый и картинку не понимает: для человека это то же самое. */
+      throw new Error(d.error === 'no_vision' || d.error === 'empty_text'
+        ? 'Сова пока не умеет читать картинки: на её сервере нет модели для изображений. А пока можно выделить текст на скриншоте и вставить его в поле умного ввода.'
+        : 'Сова не смогла прочитать скриншот. Попробуйте ещё раз.');
+    }
+    const r = Imp.opsFromText(d.text);
+    return { kind: 'image', bank: r.bank, ops: r.ops };
+  }
+  /* Скриншот уменьшаем до 1600 точек по длинной стороне: Сове хватает, а летит быстрее. */
+  async function shrinkImage(file) {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      const k = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * k);
+      c.height = Math.round(img.naturalHeight * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      return c.toDataURL('image/jpeg', 0.85).split(',')[1];
+    } catch { throw new Error('Картинку не получилось открыть.'); }
+    finally { URL.revokeObjectURL(url); }
+  }
+
+  /* Статья по названию, подсказке продавца и категории банка. «Прочее» не
+     подставляем: лучше честное «Выбрать статью», чем угадывание. */
+  function guessImportCat(o) {
+    for (const text of [o.name, o.hint, o.bankCat]) {
+      if (!text) continue;
+      const c = parseLocal(text).cat;
+      if (c && !c.sys && !/^проч/i.test(c.name)) return c;
+    }
+    return null;
+  }
+
+  function setImportOps(r) {
+    if (!imp) return;
+    /* Уже внесённое: тот же день и та же сумма. Повторная загрузка не задвоит. */
+    const have = {};
+    state.data.expenses.forEach(e => { const k = e.ts.slice(0, 10) + '|' + e.amount; have[k] = (have[k] || 0) + 1; });
+    const ops = r.ops.filter(o => o.amount > 0).map(o => {
+      const k = o.d + '|' + o.amount;
+      const dup = !o.skip && have[k] > 0;
+      if (dup) have[k]--;
+      const cat = o.skip || o.transfer ? null : guessImportCat(o);
+      return Object.assign(o, { dup, on: !o.skip && !dup, catId: cat ? cat.id : null, manual: false });
+    });
+    Object.assign(imp, { busy: false, kind: r.kind, bank: r.bank, ops, pick: null });
+    if (!ops.length) imp.err = r.kind === 'image'
+      ? 'Сова не нашла на картинке операций с суммами.'
+      : 'Не нашёл операций с датами и суммами. Подойдёт выписка банка в PDF, Excel или CSV, скриншот списка операций или скопированный оттуда текст.';
+    drawImport();
+  }
+
+  function importReview() {
+    const live = imp.ops.filter(o => !o.skip && !o.dup), rest = imp.ops.filter(o => o.skip || o.dup);
+    const chosen = imp.ops.filter(o => o.on);
+    const total = chosen.reduce((t, o) => t + o.amount, 0);
+    const days = [];
+    live.slice().sort((a, b) => (b.d + b.t).localeCompare(a.d + a.t)).forEach(o => {
+      let g = days.find(x => x.d === o.d);
+      if (!g) { g = { d: o.d, ops: [] }; days.push(g); }
+      g.ops.push(o);
+    });
+    const row = o => {
+      const i = imp.ops.indexOf(o);
+      const c = o.catId && catById(o.catId);
+      const off = o.skip || o.dup;
+      const tag = off
+        ? `<span class="row-cat">${esc(o.dup ? 'уже внесено' : o.skip)}</span>`
+        : `<button type="button" class="imp-tag${c ? '' : ' ask'}" data-act="imp-cat" data-i="${i}">${c ? esc(c.name) : 'Выбрать статью'}${svg('chevron-right', 12, 2.2)}</button>`;
+      const ic = c ? c.icon : o.transfer ? 'users' : o.sign > 0 ? 'arrow-down-left' : o.skip === 'перевод на свой счёт' ? 'trending-up' : 'circle-help';
+      return `<div class="imp-row${off ? ' dimmed' : ''}" data-k="o${i}">
+          <button type="button" class="imp-ck${o.on ? ' on' : ''}" data-act="imp-on" data-i="${i}" role="checkbox" aria-checked="${o.on}" aria-label="Внести: ${esc(o.name)}">${svg('check', 14, 2.6)}</button>
+          <span class="row-ic">${svg(ic, 17, 1.6)}</span>
+          <span class="row-c"><span class="row-n">${esc(o.name)}</span><span class="row-m">${tag}${o.t ? `<i class="dot"></i><span class="row-t">${o.t}</span>` : ''}</span></span>
+          <span class="row-a">${o.sign > 0 ? '+' : ''}${fmt(o.amount)} ₽</span>
+        </div>`;
+    };
+    const src = [imp.bank, KIND_T[imp.kind]].filter(Boolean).join(' · ');
+    const n = imp.ops.length;
+    return `<p class="hint">${esc(cap(src))}: ${n} ${plural(n, 'операция', 'операции', 'операций')}, расходов ${live.length}.</p>
+      ${days.map(g => `<div class="imp-group" data-k="d${g.d}">
+        <div class="group-h"><span class="g-day">${esc(dayLabel(g.d))}</span><span class="g-sum">${fmt(g.ops.filter(o => o.on).reduce((t, o) => t + o.amount, 0))} ₽</span></div>
+        <div class="card flush">${g.ops.map(row).join('')}</div></div>`).join('')}
+      ${rest.length ? `<div class="imp-group" data-k="rest">
+        <div class="group-h"><span class="g-day soft">Не внесу</span><span class="g-sum">${rest.length}</span></div>
+        <div class="card flush">${rest.map(row).join('')}</div></div>` : ''}
+      <div class="imp-foot"><button type="button" class="imp-go" data-act="imp-save" aria-disabled="${!chosen.length}">${chosen.length
+        ? `Внести ${chosen.length} ${plural(chosen.length, 'расход', 'расхода', 'расходов')} <small>· ${fmt(total)} ₽</small>`
+        : 'Ничего не отмечено'}</button></div>`;
+  }
+
+  function importPicker() {
+    const o = imp.ops[imp.pick];
+    const cats = orderedCats().filter(c => !c.sys && !c.hidden);
+    const rows = [];
+    let i = 0, k = 0;
+    for (const size of honeyRows(cats.length)) { rows.push(cats.slice(i, i + size)); i += size; }
+    return `<p class="hint">${esc(o.name)} · ${fmt(o.amount)} ₽</p>
+      <div class="honey">${rows.map(r => `<div class="honey-row">${r.map(c =>
+        `<button type="button" class="cat${o.catId === c.id ? ' on' : ''}" style="--i:${k++}" data-act="imp-pick" data-id="${c.id}" title="${esc(c.name)}" aria-label="${esc(c.name)}" aria-pressed="${o.catId === c.id}">${svg(c.icon, 26, 1.6)}</button>`
+      ).join('')}</div>`).join('')}</div>
+      <div class="picked-name">${o.catId && catById(o.catId) ? esc(catById(o.catId).name) : 'статья не выбрана'}</div>
+      <button type="button" class="btn-ghost" data-act="imp-back">Назад к списку</button>`;
+  }
+
+  function drawImport() {
+    if (!imp) return;
+    const was = sheetHost.querySelector('.sheet-wrap:not(.closing) .imp-sheet');
+    const y = was ? was.scrollTop : 0;
+    const keep = was && was.dataset.view === 'review' && !imp.busy && !imp.err && imp.pick == null;
+    const snap = keep ? morphSnap(was) : null;
+    let title, body, view;
+    if (imp.err) {
+      view = 'err'; title = 'Не получилось';
+      body = `<p class="hint">${esc(imp.err)}</p><button type="button" class="btn-ghost" data-act="imp-close">Понятно</button>`;
+    } else if (imp.busy) {
+      view = 'busy'; title = imp.kind === 'image' ? 'Сова читает скриншот' : 'Читаю файл';
+      body = `<div class="imp-read">${imp.thumb ? `<img class="imp-thumb" src="${imp.thumb}" alt="">` : `<span class="imp-file">${svg('file-text', 22, 1.7)}</span>`}
+          <div class="imp-read-c"><span class="hint">${esc(imp.name || 'Разбираю операции')}</span><i class="imp-bar"><b></b></i></div></div>`;
+    } else if (imp.pick != null) {
+      view = 'pick'; title = 'Статья расхода'; body = importPicker();
+    } else {
+      view = 'review'; title = 'Проверьте расходы'; body = importReview();
+    }
+    sheetHost.innerHTML = `<div class="sheet-wrap${was ? ' still' : ''}">
+      <div class="dim" data-act="imp-close"></div>
+      <div class="sheet imp-sheet${view === 'pick' ? ' cat-pick' : ''}" data-view="${view}" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+        <div class="sheet-h"><span class="sec-t">${esc(title)}</span><button type="button" class="x pressable" data-act="imp-close" aria-label="Закрыть">${svg('x', 18, 1.8)}</button></div>
+        ${body}
+      </div>
+    </div>`;
+    const sh = sheetHost.querySelector('.imp-sheet');
+    if (keep) { sh.scrollTop = y; morphApply(snap, sh); }
+    else if (view === 'review' && imp.backY) { sh.scrollTop = imp.backY; imp.backY = 0; }
+  }
+
+  function closeImport() {
+    if (imp && imp.thumb) URL.revokeObjectURL(imp.thumb);
+    imp = null;
+    const wrap = sheetHost.querySelector('.sheet-wrap');
+    if (!wrap) return;
+    if (M.reduced()) { sheetHost.innerHTML = ''; return; }
+    wrap.classList.add('closing');
+    setTimeout(() => { if (wrap.isConnected) sheetHost.innerHTML = ''; }, 210);
+  }
+
+  /* Статья выбрана руками — та же статья встаёт строкам с тем же названием. */
+  function pickImportCat(id) {
+    const o = imp.ops[imp.pick];
+    const same = n => n.toLowerCase().replace(/ё/g, 'е');
+    imp.ops.forEach(x => {
+      if (x === o || (!x.skip && !x.dup && !x.manual && same(x.name) === same(o.name))) { x.catId = id; x.manual = true; }
+    });
+    haptic('selection');
+    sheetHost.querySelectorAll('.imp-sheet .cat').forEach(b => b.classList.toggle('on', b.dataset.id === id));
+    setTimeout(() => { if (!imp) return; imp.pick = null; drawImport(); }, M.reduced() ? 0 : 160);
+  }
+
+  function saveImport() {
+    if (!imp || !imp.ops) return;
+    const chosen = imp.ops.filter(o => o.on);
+    if (!chosen.length) return;
+    const none = chosen.some(o => !o.catId || !catById(o.catId)) ? noneCat(true) : null;
+    const before = derive().todayTotal;
+    const today = dayKey(new Date());
+    let todayAdd = 0, total = 0;
+    chosen.forEach(o => {
+      const catId = o.catId && catById(o.catId) ? o.catId : none.id;
+      state.data.expenses.push({ id: Store.uid(), ts: `${o.d}T${o.t || '12:00'}:00`, amount: o.amount, catId, name: o.name, src: 'import' });
+      if (o.manual && o.catId) { const w = learnCandidates(o.name, o.catId).find(x => x.length >= 4 && !LEGAL_W.test(x)); if (w) state.data.learned[w] = o.catId; }
+      if (o.d === today) todayAdd += o.amount;
+      total += o.amount;
+    });
+    bumpEdits();
+    persist();
+    haptic('success');
+    const from = imp.bank || KIND_T[imp.kind] || '';
+    closeImport();
+    if (state.tab !== 'today') { state.tab = 'today'; show('today', -1); } else rerender();
+    if (todayAdd) flyToDash(null, todayAdd, before);
+    else M.once(document.getElementById('card-today'), 'nudge');
+    importToast(chosen.length, total, from);
+  }
+
+  function importToast(n, total, from) {
+    const old = document.querySelector('.imp-toast');
+    if (old) old.remove();
+    const t = document.createElement('div');
+    t.className = 'imp-toast';
+    t.setAttribute('role', 'status');
+    t.innerHTML = `<span class="it-ic">${svg('check', 18, 2.4)}</span><span class="it-t"><b>Внесено ${n} ${plural(n, 'расход', 'расхода', 'расходов')}</b>${from ? `<span>${esc(from)}</span>` : ''}</span><em>${fmt(total)} ₽</em>`;
+    document.body.appendChild(t);
+    setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 320); }, 2800);
+  }
+
   /* ---------- события ---------- */
   screens.addEventListener('click', e => {
     const el = currentScreen(); if (!el) return;
@@ -1944,6 +2211,7 @@
       case 'save-smart': saveSmart(act); break;
       case 'smart-cat': openSmartCat(); break;
       case 'mic': micToggle(); break;
+      case 'import': haptic('light'); pickImportFile(); break;
       case 'bk-save': backupSave(act); break;
       case 'row-cat': openRowCat(act.dataset.id); break;
       case 'bk-later': state.data.backupSnooze = dayKey(new Date()); persist(); rerender(); break;
@@ -1993,6 +2261,12 @@
       case 'close-rowcat': closeRowCat(); break;
       case 'close-learned': closeLearned(); break;
       case 'close-smartcat': closeSmartCat(); break;
+      case 'imp-close': closeImport(); break;
+      case 'imp-on': { const o = imp && imp.ops[+act.dataset.i]; if (o) { o.on = !o.on; haptic('selection'); drawImport(); } break; }
+      case 'imp-cat': if (imp) { imp.pick = +act.dataset.i; imp.backY = (sheetHost.querySelector('.imp-sheet') || {}).scrollTop || 0; drawImport(); } break;
+      case 'imp-pick': if (imp && imp.pick != null) pickImportCat(act.dataset.id); break;
+      case 'imp-back': if (imp) { imp.pick = null; drawImport(); } break;
+      case 'imp-save': saveImport(); break;
       case 'smartcat-pick': {
         haptic('selection');
         state.smartCat = (state.smartCat === act.dataset.id) ? null : act.dataset.id;
@@ -2011,7 +2285,7 @@
   });
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
-    if (sheetHost.querySelector('.sheet-wrap')) { if (state.editor) closeEditor(); else if (rowPick) closeRowCat(); else closeConfirm(); }
+    if (sheetHost.querySelector('.sheet-wrap')) { if (imp) closeImport(); else if (state.editor) closeEditor(); else if (rowPick) closeRowCat(); else closeConfirm(); }
     else if (state.settings) closeSettings();
   });
 
