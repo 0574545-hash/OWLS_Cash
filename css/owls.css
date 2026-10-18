@@ -100,7 +100,7 @@ svg{display:block;flex:none}
 .h1{font-family:var(--display);font-weight:800;font-size:24px;letter-spacing:-.03em;line-height:1.05;color:var(--ink)}
 .sec-t{font-family:var(--display);font-weight:700;font-size:13.5px;color:var(--ink)}
 .hint{font-size:12px;color:var(--muted);line-height:1.45}
-.small{font-size:11.5px;color:var(--faint)}
+.small{font-size:11.5px;color:var(--muted)}
 .lbl{font:600 10.5px var(--body);color:var(--muted);text-transform:uppercase;letter-spacing:.09em}
 
 /* ---------- контейнеры ---------- */
@@ -115,8 +115,8 @@ svg{display:block;flex:none}
 .item:active{transform:scale(.97);background:var(--line-soft);transition-duration:60ms}
 
 /* ---------- кнопки ---------- */
-.btn-add{height:48px;width:100%;border-radius:var(--r-btn);background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;font-weight:700;transition:transform var(--t-press) var(--ease-out),background-color .15s}
-.btn-add:active{background:var(--accent-dark);transform:scale(.93);transition-duration:60ms}
+.btn-add{height:48px;width:100%;border-radius:var(--r-btn);background:var(--cta-bottom);color:#fff;display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;font-weight:700;transition:transform var(--t-press) var(--ease-out),background-color .15s}
+.btn-add:active{filter:brightness(.88);transform:scale(.93);transition-duration:60ms}
 .save{height:48px;width:100%;border-radius:var(--r-btn);background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;font-weight:700;transition:transform var(--t-press) var(--ease-out),opacity .15s}
 .save:active{opacity:.85;transform:scale(.93);transition-duration:60ms}
 .save[aria-disabled="true"]{opacity:.4;pointer-events:none}

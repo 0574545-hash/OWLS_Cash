@@ -1031,7 +1031,7 @@
           ${recentRows()}
         </button>
         <button type="button" class="card sum go pressable cascade-item${longToday ? ' compact' : ''}" id="card-today" data-act="open-dash" aria-label="Дашборд: сегодня ${fmt(d.todayTotal)} рублей, за ${esc(monthStr)} ${fmt(d.monthTotal)} рублей">
-          <div class="lbl go-h">Дашборд${svg('chevron-right', 14, 2)}</div>
+          <div class="lbl go-h">Сегодня${svg('chevron-right', 14, 2)}</div>
           <div class="dash-top"><div class="num"><span class="n">${fmt(d.todayTotal)}</span><span class="rub accent">₽</span></div></div>
           ${weekBars()}
         </button>
@@ -1130,7 +1130,7 @@
       <div class="sheet cat-pick" role="dialog" aria-modal="true" aria-label="Категория расхода">
         <div class="sheet-h"><span class="sec-t">Категория</span><button type="button" class="x pressable" data-act="close-smartcat" aria-label="Закрыть">${svg('x', 18, 1.8)}</button></div>
         <div class="honey">${rows.map(row => `<div class="honey-row">${row.map(c =>
-          `<button type="button" class="cat${cur && cur.id === c.id ? ' on' : ''}" style="--i:${k++}" data-act="smartcat-pick" data-id="${c.id}" title="${esc(c.name)}" aria-label="${esc(c.name)}" aria-pressed="${!!cur && cur.id === c.id}">${svg(c.icon, 26, 1.6)}</button>`
+          `<div class="cat-w${cur && cur.id === c.id ? ' on' : ''}"><button type="button" class="cat${cur && cur.id === c.id ? ' on' : ''}" style="--i:${k++}" data-act="smartcat-pick" data-id="${c.id}" title="${esc(c.name)}" aria-label="${esc(c.name)}" aria-pressed="${!!cur && cur.id === c.id}">${svg(c.icon, 26, 1.6)}</button><span class="cat-cap" aria-hidden="true">${esc(shortName(c.name))}</span></div>`
         ).join('')}</div>`).join('')}</div>
         <div class="picked-name">${cur ? esc(cur.name) : 'не выбрана'}</div>
         ${state.smartCat ? `<button type="button" class="btn-ghost wide" data-act="smartcat-auto">Определять самому</button>` : ''}
@@ -1910,17 +1910,19 @@
           <span class="switch${rowPick.remember ? ' on' : ''}"><i></i></span>
         </button>` : ''}
         <div class="ed-btns">
-          <button type="button" class="save" data-act="rowcat-save" aria-disabled="${!(amt > 0 && rowPick.catId)}">Сохранить</button>
+          <button type="button" class="save" data-act="rowcat-save" aria-disabled="${!(amt > 0)}">Сохранить</button>
           <button type="button" class="ed-del" data-act="rowcat-delete">${svg('trash-2', 16, 1.8)}Удалить запись</button>
         </div>
       </div>
     </div>`;
     const ea = sheetHost.querySelector('#ed-amount'), en = sheetHost.querySelector('#ed-name');
     const sync = () => {
-      const ok = (parseInt(rowPick.amount, 10) || 0) > 0 && !!rowPick.catId;
+      const ok = (parseInt(rowPick.amount, 10) || 0) > 0;
       sheetHost.querySelector('[data-act="rowcat-save"]').setAttribute('aria-disabled', String(!ok));
     };
-    ea.addEventListener('input', () => { ea.value = ea.value.replace(/\D/g, '').replace(/^0+(?=\d)/, ''); rowPick.amount = ea.value; sync(); });
+    const fit = () => { ea.style.width = Math.max(1, ea.value.length) + 'ch'; };
+    fit();
+    ea.addEventListener('input', () => { ea.value = ea.value.replace(/\D/g, '').replace(/^0+(?=\d)/, ''); rowPick.amount = ea.value; fit(); sync(); });
     en.addEventListener('input', () => { rowPick.name = en.value; });
     [ea, en].forEach(x => x.addEventListener('keydown', ev => { if (ev.key === 'Enter') x.blur(); }));
     if (first) sheetHost.querySelector('#ed-title').focus({ preventScroll: true });
@@ -1936,19 +1938,25 @@
     setTimeout(() => { sheetHost.innerHTML = ''; refocus(); }, 210);
   }
   function saveRowCat() {
-    if (!rowPick || !rowPick.catId) return;
+    if (!rowPick) return;
     const amount = parseInt(rowPick.amount, 10) || 0;
     if (!(amount > 0)) return;
     const e = state.data.expenses.find(x => x.id === rowPick.id);
     if (e) {
-      const cat = catById(rowPick.catId);
-      e.catId = rowPick.catId;
-      e.amount = amount;
-      e.name = rowPick.name.trim() || (cat ? cat.name : e.name);
+      const was = snapData();
+      const i = state.data.expenses.indexOf(e);
+      state.data.expenses[i] = Object.assign({}, e);
+      was.expenses[i] = e;
+      const cat = rowPick.catId ? catById(rowPick.catId) : null;
+      const target = state.data.expenses[i];
+      if (cat) target.catId = cat.id;
+      target.amount = amount;
+      target.name = rowPick.name.trim() || (cat ? cat.name : e.name);
       if (rowPick.remember && rowPick.word) state.data.learned[rowPick.word] = rowPick.catId;
       bumpEdits();
       persist();
       haptic('success');
+      undoToast('Запись изменена', `${target.name} · ${fmt(target.amount)} ₽`, () => undoTo(was, 'Изменения отменены'));
     }
     closeRowCat();
     rerender();
@@ -2114,7 +2122,7 @@
   }
 
   /* Статья по названию, подсказке продавца и категории банка. «Прочее» не
-     подставляем: лучше честное «Выбрать статью», чем угадывание. */
+     подставляем: лучше честное «Выбрать категорию», чем угадывание. */
   function guessImportCat(o) {
     for (const text of [o.name, o.hint, o.bankCat]) {
       if (!text) continue;
@@ -2161,12 +2169,12 @@
          статьи, и она вносится наравне с остальными. */
       const why = off ? `<span class="row-cat">${esc(o.dup ? 'уже внесено' : o.skip)}</span>` : '';
       const tag = off && !o.on ? why
-        : `<button type="button" class="imp-tag${c ? '' : ' ask'}" data-act="imp-cat" data-i="${i}">${c ? esc(c.name) : 'Выбрать статью'}${svg('chevron-right', 12, 2.2)}</button>`;
+        : `<button type="button" class="imp-tag${c ? '' : ' ask'}" data-act="imp-cat" data-i="${i}" aria-label="Категория для «${esc(o.name)}»: ${c ? esc(c.name) : 'не выбрана'}">${c ? esc(c.name) : 'Выбрать категорию'}${svg('chevron-right', 12, 2.2)}</button>`;
       /* Причина у отмеченной строки — отдельной строкой ниже: рядом со статьёй она её обрезала. */
       const whyLine = off && o.on ? `<span class="imp-why">${esc(o.dup ? 'уже внесено' : o.skip)}</span>` : '';
       const ic = c ? c.icon : o.transfer ? 'users' : o.sign > 0 ? 'arrow-down-left' : o.skip === 'перевод на свой счёт' ? 'trending-up' : 'circle-help';
       return `<div class="imp-row${off && !o.on ? ' dimmed' : ''}" data-k="o${i}">
-          <button type="button" class="imp-ck${o.on ? ' on' : ''}" data-act="imp-on" data-i="${i}" role="checkbox" aria-checked="${o.on}" aria-label="Внести: ${esc(o.name)}">${svg('check', 14, 2.6)}</button>
+          <button type="button" class="imp-ck${o.on ? ' on' : ''}" data-act="imp-on" data-i="${i}" role="checkbox" aria-checked="${o.on}" aria-label="Внести: ${esc(o.name)}, ${fmt(o.amount)} ₽">${svg('check', 14, 2.6)}</button>
           <span class="row-ic">${svg(ic, 17, 1.6)}</span>
           <span class="row-c"><span class="row-n">${esc(o.name)}</span><span class="row-m">${tag}${o.t ? `<i class="dot"></i><span class="row-t">${o.t}</span>` : ''}</span>${whyLine}</span>
           <span class="row-a">${o.sign > 0 ? '+' : ''}${fmt(o.amount)} ₽</span>
@@ -2180,11 +2188,11 @@
         <div class="group-h"><span class="g-day">${esc(dayLabel(g.d))}</span><span class="g-sum">${fmt(g.ops.filter(o => o.on).reduce((t, o) => t + o.amount, 0))} ₽</span></div>
         <div class="card flush">${g.ops.map(row).join('')}</div></div>`).join('')}
       ${rest.length ? `<div class="imp-group" data-k="rest">
-        <div class="group-h"><span class="g-day soft">Не внесу</span><span class="g-sum">${rest.length}</span></div>
+        <div class="group-h"><span class="g-day soft">Обычно не вносят</span><span class="g-sum">${rest.length}</span></div>
         <div class="card flush">${rest.map(row).join('')}</div></div>` : ''}
       <div class="imp-foot"><button type="button" class="imp-go" data-act="imp-save" aria-disabled="${!chosen.length}">${chosen.length
         ? (loose
-          ? `Внести ${chosen.length} <small>· ${fmt(total)} ₽</small><span class="imp-warn">${loose} без статьи</span>`
+          ? `Внести ${chosen.length} <small>· ${fmt(total)} ₽</small><span class="imp-warn">${loose} без категории</span>`
           : `Внести ${chosen.length} ${plural(chosen.length, 'расход', 'расхода', 'расходов')} <small>· ${fmt(total)} ₽</small>`)
         : 'Ничего не отмечено'}</button></div>`;
   }
@@ -2197,9 +2205,9 @@
     for (const size of honeyRows(cats.length)) { rows.push(cats.slice(i, i + size)); i += size; }
     return `<p class="hint">${esc(o.name)} · ${fmt(o.amount)} ₽</p>
       <div class="honey">${rows.map(r => `<div class="honey-row">${r.map(c =>
-        `<button type="button" class="cat${o.catId === c.id ? ' on' : ''}" style="--i:${k++}" data-act="imp-pick" data-id="${c.id}" title="${esc(c.name)}" aria-label="${esc(c.name)}" aria-pressed="${o.catId === c.id}">${svg(c.icon, 26, 1.6)}</button>`
+        `<div class="cat-w${o.catId === c.id ? ' on' : ''}"><button type="button" class="cat${o.catId === c.id ? ' on' : ''}" style="--i:${k++}" data-act="imp-pick" data-id="${c.id}" title="${esc(c.name)}" aria-label="${esc(c.name)}" aria-pressed="${o.catId === c.id}">${svg(c.icon, 26, 1.6)}</button><span class="cat-cap" aria-hidden="true">${esc(shortName(c.name))}</span></div>`
       ).join('')}</div>`).join('')}</div>
-      <div class="picked-name">${o.catId && catById(o.catId) ? esc(catById(o.catId).name) : 'статья не выбрана'}</div>
+      <div class="picked-name">${o.catId && catById(o.catId) ? esc(catById(o.catId).name) : 'категория не выбрана'}</div>
       <button type="button" class="btn-ghost" data-act="imp-back">Назад к списку</button>`;
   }
 
@@ -2220,7 +2228,7 @@
       body = `<div class="imp-read">${imp.thumb ? `<img class="imp-thumb" src="${imp.thumb}" alt="">` : `<span class="imp-file">${svg('file-text', 22, 1.7)}</span>`}
           <div class="imp-read-c"><span class="hint">${esc(imp.name || 'Разбираю операции')}</span><i class="imp-bar"><b></b></i></div></div>`;
     } else if (imp.pick != null) {
-      view = 'pick'; title = 'Статья расхода'; body = importPicker();
+      view = 'pick'; title = 'Категория'; body = importPicker();
     } else {
       view = 'review'; title = 'Проверьте расходы'; body = importReview();
     }
@@ -2268,7 +2276,7 @@
     });
     imp.touched = true;
     haptic('selection');
-    sheetHost.querySelectorAll('.imp-sheet .cat').forEach(b => b.classList.toggle('on', b.dataset.id === id));
+    sheetHost.querySelectorAll('.imp-sheet .cat').forEach(b => { const on = b.dataset.id === id; b.classList.toggle('on', on); b.parentElement.classList.toggle('on', on); });
     setTimeout(() => { if (!imp) return; imp.pick = null; drawImport(); }, M.reduced() ? 0 : 160);
   }
 
@@ -2298,7 +2306,7 @@
     else M.once(document.getElementById('card-today'), 'nudge');
     const loose = chosen.filter(o => !o.catId || !catById(o.catId)).length;
     undoToast(`Внесено ${chosen.length} ${plural(chosen.length, 'расход', 'расхода', 'расходов')}`,
-      `${fmt(total)} ₽` + (loose ? ` · ${loose} без статьи` : (from ? ` · ${from}` : '')),
+      `${fmt(total)} ₽` + (loose ? ` · ${loose} без категории` : (from ? ` · ${from}` : '')),
       () => undoTo(was, 'Загрузка отменена'));
   }
 
@@ -2443,7 +2451,7 @@
         haptic('selection');
         state.smartCat = (state.smartCat === act.dataset.id) ? null : act.dataset.id;
         /* Выбор виден мгновение до закрытия: кружок загорается, потом соты уходят. */
-        sheetHost.querySelectorAll('.cat').forEach(b => b.classList.toggle('on', b.dataset.id === state.smartCat));
+        sheetHost.querySelectorAll('.cat').forEach(b => { const on = b.dataset.id === state.smartCat; b.classList.toggle('on', on); b.parentElement.classList.toggle('on', on); });
         rerender();
         setTimeout(closeSmartCat, M.reduced() ? 0 : 140);
         break;
