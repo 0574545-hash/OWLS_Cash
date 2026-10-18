@@ -946,6 +946,9 @@
     return ws.filter(w => { const c = autoCatForWord(w); return c && c.id !== targetId; });
   }
 
+  /* Подпись под кружком — первое слово названия: «Кафе и рестораны» → «Кафе». */
+  const shortName = n => (String(n).trim().split(/[\s,]+/)[0] || '').replace(/[.:;]+$/, '');
+
   /* ---------- экран «Сегодня» ---------- */
   function honeycomb(cats) {
     if (!cats.length) return '<div class="honey-empty">Все категории скрыты. Откройте настройки, чтобы вернуть их.</div>';
@@ -953,7 +956,7 @@
     let i = 0;
     for (const size of honeyRows(cats.length)) { rows.push(cats.slice(i, i + size)); i += size; }
     return rows.map(r => `<div class="honey-row">${r.map(c =>
-      `<button type="button" class="cat${state.cat === c.id ? ' on' : ''}" data-cat="${c.id}" title="${esc(c.name)}" aria-label="${esc(c.name)}" aria-pressed="${state.cat === c.id}">${svg(c.icon, 26, 1.6)}</button>`
+      `<div class="cat-w${state.cat === c.id ? ' on' : ''}"><button type="button" class="cat${state.cat === c.id ? ' on' : ''}" data-cat="${c.id}" title="${esc(c.name)}" aria-label="${esc(c.name)}" aria-pressed="${state.cat === c.id}">${svg(c.icon, 26, 1.6)}</button><span class="cat-cap" aria-hidden="true">${esc(shortName(c.name))}</span></div>`
     ).join('')}</div>`).join('');
   }
 
