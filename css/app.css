@@ -543,3 +543,14 @@
 .ed-btns{display:flex;flex-direction:column;gap:6px;padding-top:2px}
 .ed-del{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;font:600 13.5px var(--body);color:var(--bad);border-radius:var(--r-btn);transition:background-color var(--t-base)}
 .ed-del:active{background:var(--bad-bg)}
+
+/* вопрос перед выходом из выписки */
+.cf-wrap{position:fixed;inset:0;z-index:80;display:flex;align-items:flex-end;justify-content:center}
+.cf-dim{position:absolute;inset:0;background:rgba(11,30,53,.28);animation:fade var(--t-base) both}
+.cf{position:relative;width:calc(100% - 24px);max-width:456px;margin-bottom:calc(var(--safe-bottom) + 12px);background:#fff;border-radius:18px;padding:18px 18px 12px;display:flex;flex-direction:column;gap:8px;box-shadow:var(--shadow-sheet);animation:slide-up var(--t-base) var(--ease-out) both}
+.cf b{font:700 16px var(--body);color:var(--ink);outline:none}
+.cf p{font:500 13px var(--body);color:var(--muted);line-height:1.45;margin:0}
+.cf-btns{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+.cf-out{display:flex;align-items:center;justify-content:center;min-height:44px;font:600 14px var(--body);color:var(--bad);border-radius:var(--r-btn)}
+.cf-out:active{background:var(--bad-bg)}
+@media (prefers-reduced-motion:reduce){.cf,.cf-dim{animation:none}}

@@ -996,7 +996,7 @@
 
   function renderToday(d) {
     const has = state.amount.length > 0 && parseInt(state.amount, 10) > 0;
-    const can = has && !!state.cat && !!catById(state.cat);
+    const can = has;
     const picked = state.cat && catById(state.cat);
     const dateStr = d.now.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
     const monthStr = d.now.toLocaleDateString('ru-RU', { month: 'long' });
@@ -1184,7 +1184,7 @@
   /* Точечное обновление формы без перерисовки (цифры numpad). */
   function patchForm(el) {
     const has = state.amount.length > 0 && parseInt(state.amount, 10) > 0;
-    const can = has && !!state.cat;
+    const can = has;
     const n = el.querySelector('.a-n'); if (n) { n.textContent = has ? fmt(parseInt(state.amount, 10)) : '0'; n.classList.toggle('ph', !has); }
     const h = el.querySelector('.form-hint'); if (h) h.textContent = formHint(has, can);
     const c = el.querySelector('.commit'); if (c) { c.classList.toggle('on', can); c.setAttribute('aria-disabled', String(!can)); }
@@ -1293,7 +1293,7 @@
            вправо и возвращается — подсказка, что её надо тянуть.
            Нажатие без касания (VoiceOver, клавиатура, Switch Control) вносит
            сразу: свайп им недоступен, а случайного касания у них не бывает. */
-        let touchedAt = 0;
+        let touchedAt = 0, hintAt = 0;
         const touch = () => { touchedAt = performance.now(); };
         cb.addEventListener('pointerdown', touch, true);
         cb.addEventListener('pointerup', touch, true);   // долгий недотянутый свайп — тоже касание, не внесение
@@ -1303,6 +1303,11 @@
             if (cb.dataset.slideAct === 'save-smart') saveSmart(cb); else saveExpense(cb);
             return;
           }
+          if (performance.now() - hintAt < 2000) {   // второе касание после подсказки
+            if (cb.dataset.slideAct === 'save-smart') saveSmart(cb); else saveExpense(cb);
+            return;
+          }
+          hintAt = performance.now();
           cb.classList.remove('hint');
           void cb.offsetWidth;
           cb.classList.add('hint');
@@ -1340,6 +1345,12 @@
     state.tab = tab;
     if (state.pad) state.pad = false;
     show(tab, dir, fromOffset);
+    focusHead(currentScreen());
+  }
+  /* Фокус на заголовок нового экрана или листа — для VoiceOver и клавиатуры. */
+  function focusHead(root) {
+    const h = root && root.querySelector('h1, .sec-t');
+    if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); }
   }
 
   /* ---------- действия ---------- */
@@ -1445,8 +1456,8 @@
   function saveExpense(btn) {
     if (saving) return;
     const amount = parseInt(state.amount || '0', 10);
-    const cat = state.cat && catById(state.cat);
-    if (!(amount > 0) || !cat) return;
+    const cat = (state.cat && catById(state.cat)) || noneCat(true);   // без категории — разберут потом
+    if (!(amount > 0)) return;
     const row = { id: Store.uid(), ts: localISO(new Date()), amount, catId: cat.id, name: state.comment.trim() || cat.name };
     let from = null;
     const commit = () => {
@@ -1458,7 +1469,7 @@
       persist();
       state.amount = ''; state.cat = null; state.comment = ''; state.pad = false;
       rerender();
-      undoToast(`Внесено ${fmt(amount)} ₽`, cat.name, () => undoTo(was, 'Расход отменён'));
+      undoToast(`Внесено ${fmt(amount)} ₽`, cat.sys ? 'без категории' : cat.name, () => undoTo(was, 'Расход отменён'));
       if (from) { flyToDash(from, amount, before); flyToHistory(from, row.catId); }
       else M.once(document.getElementById('card-today'), 'nudge');
     };
@@ -1691,7 +1702,7 @@
       o.classList.remove('appear');
       o.scrollTop = y;
       morphApply(snap, o);
-    }
+    } else focusHead(overlay);
     const su = overlay.querySelector('#sova-url');
     if (su) {
       su.addEventListener('input', () => { state.data.sovaUrl = su.value.trim(); sovaForget(); persist(); });
@@ -1723,6 +1734,8 @@
     state.settings = false;
     const o = overlay.querySelector('.overlay');
     rerender();
+    const brand = screens.querySelector('[data-act="settings"]');
+    if (brand) brand.focus({ preventScroll: true });
     if (!o || M.reduced()) { overlay.innerHTML = ''; return; }
     o.classList.remove('appear');
     o.classList.add('closing');
@@ -2044,13 +2057,14 @@
       if (imp !== job) return;
       job.busy = false;
       job.err = (err && err.message) || 'Файл не получилось прочитать.';
+      job.errKind = err && err.kind;
       drawImport();
     }
   }
 
   /* Картинку читает Сова: переписывает операции строками, разбор — здесь же. */
   async function sovaImage(file) {
-    if (!(state.data.sova && state.data.sovaUrl)) throw new Error('Скриншоты читает Сова. Включите её в настройках, в разделе умного ввода.');
+    if (!(state.data.sova && state.data.sovaUrl)) throw Object.assign(new Error('Скриншоты читает Сова. Включите её в настройках или вставьте текст со скриншота.'), { kind: 'nosova' });
     const b64 = await shrinkImage(file);
     /* Сервер общий и бывает занят или перезагружается: при сбое один повтор
        через 6 с, как велят правила Совы. Неверный ключ (sova_key) не повторяем. */
@@ -2198,7 +2212,9 @@
     let title, body, view;
     if (imp.err) {
       view = 'err'; title = 'Не получилось';
-      body = `<p class="hint">${esc(imp.err)}</p><button type="button" class="btn-ghost" data-act="imp-close">Понятно</button>`;
+      body = `<p class="hint">${esc(imp.err)}</p>` + (imp.errKind === 'nosova'
+        ? `<button type="button" class="save" data-act="imp-settings">Настройки Совы</button><button type="button" class="btn-ghost" data-act="imp-paste">${svg('file-text', 15, 1.8)}Вставить текст</button>`
+        : `<button type="button" class="btn-ghost" data-act="imp-close">Понятно</button>`);
     } else if (imp.busy) {
       view = 'busy'; title = imp.kind === 'image' ? 'Сова читает скриншот' : 'Читаю файл';
       body = `<div class="imp-read">${imp.thumb ? `<img class="imp-thumb" src="${imp.thumb}" alt="">` : `<span class="imp-file">${svg('file-text', 22, 1.7)}</span>`}
@@ -2208,10 +2224,12 @@
     } else {
       view = 'review'; title = 'Проверьте расходы'; body = importReview();
     }
+    /* В проверке и выборе статьи фон не закрывает лист, крестик в выборе — назад к списку. */
+    const xAct = view === 'pick' ? 'imp-back' : 'imp-close';
     sheetHost.innerHTML = `<div class="sheet-wrap${was ? ' still' : ''}">
-      <div class="dim" data-act="imp-close"></div>
+      <div class="dim"${view === 'review' || view === 'pick' ? '' : ' data-act="imp-close"'}></div>
       <div class="sheet imp-sheet${view === 'pick' ? ' cat-pick' : ''}" data-view="${view}" role="dialog" aria-modal="true" aria-label="${esc(title)}">
-        <div class="sheet-h"><span class="sec-t">${esc(title)}</span><button type="button" class="x pressable" data-act="imp-close" aria-label="Закрыть">${svg('x', 18, 1.8)}</button></div>
+        <div class="sheet-h"><span class="sec-t">${esc(title)}</span><button type="button" class="x pressable" data-act="${xAct}" aria-label="${view === 'pick' ? 'Назад к списку' : 'Закрыть'}">${svg(view === 'pick' ? 'chevron-left' : 'x', 18, 1.8)}</button></div>
         ${body}
       </div>
     </div>`;
@@ -2222,6 +2240,15 @@
     else if (view === 'review' && imp.backY) { sh.scrollTop = imp.backY; imp.backY = 0; }
   }
 
+  /* Разметку не теряем молча: если что-то отмечено или выбрано — спросить. */
+  function askCloseImport() {
+    if (!(imp && imp.touched && imp.ops && !imp.err)) { closeImport(); return; }
+    if (sheetHost.querySelector('.cf-wrap')) return;
+    sheetHost.insertAdjacentHTML('beforeend', `<div class="cf-wrap"><div class="cf-dim" data-act="imp-stay"></div>
+      <div class="cf" role="alertdialog" aria-modal="true" aria-labelledby="cf-t"><b id="cf-t" tabindex="-1">Выйти без внесения?</b><p>Отметки пропадут.</p>
+      <div class="cf-btns"><button type="button" class="save" data-act="imp-stay">Остаться</button><button type="button" class="cf-out" data-act="imp-leave">Выйти</button></div></div></div>`);
+    sheetHost.querySelector('#cf-t').focus({ preventScroll: true });
+  }
   function closeImport() {
     if (imp && imp.thumb) URL.revokeObjectURL(imp.thumb);
     imp = null;
@@ -2239,6 +2266,7 @@
     imp.ops.forEach(x => {
       if (x === o || ((x.on || (!x.skip && !x.dup)) && !x.manual && same(x.name) === same(o.name))) { x.catId = id; x.manual = true; }
     });
+    imp.touched = true;
     haptic('selection');
     sheetHost.querySelectorAll('.imp-sheet .cat').forEach(b => b.classList.toggle('on', b.dataset.id === id));
     setTimeout(() => { if (!imp) return; imp.pick = null; drawImport(); }, M.reduced() ? 0 : 160);
@@ -2289,7 +2317,7 @@
       ${undo ? '<button type="button" class="u-undo">Отменить</button>' : ''}<i class="u-bar"></i>`;
     document.body.appendChild(t);
     const bar = t.querySelector('.u-bar');
-    if (!M.reduced()) bar.animate([{ transform: 'scaleX(1)' }, { transform: 'scaleX(0)' }], { duration: UNDO_MS, easing: 'linear', fill: 'forwards' });
+    const run = M.reduced() ? null : bar.animate([{ transform: 'scaleX(1)' }, { transform: 'scaleX(0)' }], { duration: UNDO_MS, easing: 'linear', fill: 'forwards' });
     const me = {
       close(fast) {
         clearTimeout(timer);
@@ -2299,7 +2327,9 @@
         setTimeout(() => t.remove(), 300);
       }
     };
-    const timer = setTimeout(() => me.close(), UNDO_MS);
+    let timer = setTimeout(() => me.close(), UNDO_MS);
+    t.addEventListener('focusin', () => { clearTimeout(timer); if (run) run.pause(); });
+    t.addEventListener('focusout', () => { timer = setTimeout(() => me.close(), 2500); if (run) run.play(); });
     const btn = t.querySelector('.u-undo');
     if (btn) btn.addEventListener('click', () => { me.close(); haptic('medium'); undo(); });
     undoNow = me;
@@ -2384,11 +2414,21 @@
       case 'close-rowcat': closeRowCat(); break;
       case 'close-learned': closeLearned(); break;
       case 'close-smartcat': closeSmartCat(); break;
-      case 'imp-close': closeImport(); break;
+      case 'imp-close': askCloseImport(); break;
+      case 'imp-stay': sheetHost.querySelector('.cf-wrap')?.remove(); focusHead(sheetHost.querySelector('.imp-sheet')); break;
+      case 'imp-leave': closeImport(); break;
+      case 'imp-settings': closeImport(); openSettings(); break;
+      case 'imp-paste': {
+        closeImport();
+        if (!state.data.smart) { state.data.smart = true; persist(); rerender(); }
+        setTimeout(() => screens.querySelector('#smart-in')?.focus(), 250);
+        break;
+      }
       case 'imp-on': {
         const o = imp && imp.ops[+act.dataset.i];
         if (!o) break;
         o.on = !o.on;
+        imp.touched = true;
         /* Отметили строку из «Не внесу» — подберём статью, как остальным. */
         if (o.on && !o.catId && !o.guessed) { const c = o.transfer ? null : guessImportCat(o); o.catId = c ? c.id : null; o.guessed = true; }
         haptic('selection');
@@ -2418,7 +2458,7 @@
   });
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
-    if (sheetHost.querySelector('.sheet-wrap')) { if (imp) closeImport(); else if (state.editor) closeEditor(); else if (rowPick) closeRowCat(); else closeConfirm(); }
+    if (sheetHost.querySelector('.sheet-wrap')) { if (imp) askCloseImport(); else if (state.editor) closeEditor(); else if (rowPick) closeRowCat(); else closeConfirm(); }
     else if (state.settings) closeSettings();
   });
 
