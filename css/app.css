@@ -445,6 +445,10 @@
 .in-wrap:has(.eq.in) .smart-in::placeholder{color:transparent}
 .in-wrap:has(.smart-in:placeholder-shown) .eq{top:50%;bottom:auto;height:30px;margin-top:-15px;left:16px;right:62px}
 .in-wrap:has(.smart-in:placeholder-shown) .eq i{width:4px}
+/* Рядом с микрофоном скрепка — эквалайзер кончается перед ней, а не под ней. */
+.in-wrap:has(.att.by-mic) .eq{right:104px}
+.in-wrap:has(.att.by-mic):has(.smart-in:placeholder-shown) .eq{right:106px}
+.in-wrap:has(.att:not(.by-mic)) .eq{right:60px}
 /* Пустое поле — без примера. Пробел в placeholder нужен, чтобы :placeholder-shown отличал пустое поле (эквалайзер по центру). */
 
 /* Зовём к полю, пока оно пустое, без курсора и без записи. Обе анимации — на одном
