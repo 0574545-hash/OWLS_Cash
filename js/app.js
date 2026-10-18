@@ -1031,12 +1031,15 @@
         </button>
       </div>
       ${state.data.smart ? smartForm() : `<div class="card form cascade-item">
-        <div class="form-h"><span class="form-t">Новый расход</span><button type="button" class="imp-btn" data-act="import" aria-label="Загрузить выписку, таблицу или скриншот">${svg('upload', 14, 2)}Из файла</button></div>
+        <div class="form-h"><span class="form-t">Новый расход</span><span class="form-hint">${formHint(has, can)}</span></div>
         <div class="field amount-f">
           <div class="field-h"><span class="lbl">Сумма</span>${state.pad ? '<button type="button" class="done" data-act="done">Готово</button>' : ''}</div>
-          <button type="button" class="amount${state.pad ? ' open' : ''}" data-act="focus" aria-label="Сумма, ${has ? fmt(parseInt(state.amount, 10)) : 0} рублей">
-            <span class="a-n${has ? '' : ' ph'}">${has ? fmt(parseInt(state.amount, 10)) : '0'}</span><span class="a-rub">₽</span>
-          </button>
+          <div class="amount-w">
+            <button type="button" class="amount${state.pad ? ' open' : ''}" data-act="focus" aria-label="Сумма, ${has ? fmt(parseInt(state.amount, 10)) : 0} рублей">
+              <span class="a-n${has ? '' : ' ph'}">${has ? fmt(parseInt(state.amount, 10)) : '0'}</span><span class="a-rub">₽</span>
+            </button>
+            <button type="button" class="att" data-act="import" aria-label="Загрузить выписку, таблицу или скриншот">${svg('paperclip', 18, 1.8)}</button>
+          </div>
         </div>
         ${numpad}
         <div class="field">
