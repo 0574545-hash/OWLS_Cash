@@ -171,8 +171,12 @@
       const money = moneyIn(p[p.length - 1]);
       if (!money.length) continue;
       const dt = parseDate(p[0]);
-      const sign = money[0].sign > 0 || /^\+/.test(p[p.length - 1]) ? 1 : -1;
-      ops.push(makeOp({ d: dt ? dt.d : dayShift(0), t: dt ? dt.t : '', n: money[0].n, sign, name: p[1], kind: p.length > 3 ? p[2] : '' }));
+      /* Тип операции главнее знака: «Клиенту…», «Оплата…» — всегда списание,
+         даже если модель приписала плюс из-за значка рядом со строкой. */
+      const kind = p.length > 3 ? p[2] : '';
+      const out = /^(клиенту|оплата|покупка|пополнение брокерск|перевод (клиенту|на карту|по номеру|в другой банк)|сбп.*отправ)/i.test(kind);
+      const sign = !out && (money[0].sign > 0 || /^\+/.test(p[p.length - 1])) ? 1 : -1;
+      ops.push(makeOp({ d: dt ? dt.d : dayShift(0), t: dt ? dt.t : '', n: money[0].n, sign, name: p[1], kind }));
     }
     return ops;
   }

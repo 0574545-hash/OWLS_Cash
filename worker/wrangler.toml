@@ -7,3 +7,5 @@ compatibility_date = "2026-10-09"
 # и в репозиторий не попадает.
 [vars]
 ALLOW_ORIGINS = "https://0574545-hash.github.io"
+# Модель Совы для скриншотов выписок (Ollama, понимает картинки)
+SOVA_VISION_MODEL = "sova"
