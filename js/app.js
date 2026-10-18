@@ -2090,12 +2090,14 @@
          статьи, и она вносится наравне с остальными. */
       const why = off ? `<span class="row-cat">${esc(o.dup ? 'уже внесено' : o.skip)}</span>` : '';
       const tag = off && !o.on ? why
-        : `<button type="button" class="imp-tag${c ? '' : ' ask'}" data-act="imp-cat" data-i="${i}">${c ? esc(c.name) : 'Выбрать статью'}${svg('chevron-right', 12, 2.2)}</button>${off ? `<i class="dot"></i>${why}` : ''}`;
+        : `<button type="button" class="imp-tag${c ? '' : ' ask'}" data-act="imp-cat" data-i="${i}">${c ? esc(c.name) : 'Выбрать статью'}${svg('chevron-right', 12, 2.2)}</button>`;
+      /* Причина у отмеченной строки — отдельной строкой ниже: рядом со статьёй она её обрезала. */
+      const whyLine = off && o.on ? `<span class="imp-why">${esc(o.dup ? 'уже внесено' : o.skip)}</span>` : '';
       const ic = c ? c.icon : o.transfer ? 'users' : o.sign > 0 ? 'arrow-down-left' : o.skip === 'перевод на свой счёт' ? 'trending-up' : 'circle-help';
       return `<div class="imp-row${off && !o.on ? ' dimmed' : ''}" data-k="o${i}">
           <button type="button" class="imp-ck${o.on ? ' on' : ''}" data-act="imp-on" data-i="${i}" role="checkbox" aria-checked="${o.on}" aria-label="Внести: ${esc(o.name)}">${svg('check', 14, 2.6)}</button>
           <span class="row-ic">${svg(ic, 17, 1.6)}</span>
-          <span class="row-c"><span class="row-n">${esc(o.name)}</span><span class="row-m">${tag}${o.t ? `<i class="dot"></i><span class="row-t">${o.t}</span>` : ''}</span></span>
+          <span class="row-c"><span class="row-n">${esc(o.name)}</span><span class="row-m">${tag}${o.t ? `<i class="dot"></i><span class="row-t">${o.t}</span>` : ''}</span>${whyLine}</span>
           <span class="row-a">${o.sign > 0 ? '+' : ''}${fmt(o.amount)} ₽</span>
         </div>`;
     };

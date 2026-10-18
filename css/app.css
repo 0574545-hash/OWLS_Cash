@@ -495,6 +495,8 @@
 .imp-row.dimmed .row-ic{opacity:.55}
 .imp-tag{display:inline-flex;align-items:center;gap:3px;height:24px;padding:0 6px 0 9px;margin:1px 0;border-radius:var(--r-pill);background:var(--bg);border:1px solid var(--line-input);font:600 11.5px var(--body);color:var(--ink-2);white-space:nowrap;max-width:100%;overflow:hidden;position:relative}
 .imp-tag::before{content:'';position:absolute;inset:-8px -4px}
+.imp-row .imp-tag{flex:none}
+.imp-why{font:500 11px var(--body);color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .imp-tag svg{color:var(--sand);flex:none}
 .imp-tag.ask{background:var(--accent-soft);border-color:var(--accent-100);color:var(--accent-dark)}
 .imp-tag.ask svg{color:var(--accent)}
