@@ -19,12 +19,15 @@
   --ink:#0B1E35;         /* основной */
   --ink-2:#2A3A52;       /* подписи полей */
   --muted:#6B6152;       /* пояснение */
-  --faint:#9A8F7C;       /* тусклый: время, сделанное */
+  --faint:#7D7262;       /* тусклый: время, сделанное (4,7:1 на белом — норма AA) */
 
   /* Акцент и состояния. Оранжевый = действие или прогресс, больше ничего. */
   --accent:#F26336;
   --accent-soft:#FEEFEA;
   --accent-dark:#D94B1F;
+  --accent-text:#C2441A; /* оранжевый для мелкого текста: 4,5:1 и на белом, и на --accent-soft */
+  --cta-top:#D04819;     /* градиент главных кнопок: белый текст 4,6–5,2:1 */
+  --cta-bottom:#C24116;
   --accent-100:#FBD5C7;
   --navy-700:#16304E;
   --ok:#1E7A3C; --ok-bg:#DCF5E4;
@@ -184,3 +187,5 @@ svg{display:block;flex:none}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{transition:none!important;animation:none!important}
 }
+/* Только для экранного диктора: заголовки, которых не видно глазами. */
+.vh{position:absolute!important;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}

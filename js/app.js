@@ -1002,6 +1002,7 @@
     </div>` : '';
     const longToday = fmt(d.todayTotal).length > 7;
     return `<section class="screen" data-screen="today">
+      <h1 class="vh">OWLS Cash — расходы за сегодня</h1>
       <header class="head cascade-item">
         <div class="spacer"></div>
         <button type="button" class="brand pressable" data-act="settings" aria-label="Настройки категорий">
@@ -1282,10 +1283,20 @@
           enabled: () => cb.classList.contains('on'),
           onComplete: () => (cb.dataset.slideAct === 'save-smart' ? saveSmart(cb) : saveExpense(cb))
         });
-        /* Нажатие ничего не вносит, но и не молчит: ручка подскакивает
-           вправо и возвращается — подсказка, что её надо тянуть. */
-        cb.addEventListener('click', () => {
+        /* Нажатие пальцем ничего не вносит, но и не молчит: ручка подскакивает
+           вправо и возвращается — подсказка, что её надо тянуть.
+           Нажатие без касания (VoiceOver, клавиатура, Switch Control) вносит
+           сразу: свайп им недоступен, а случайного касания у них не бывает. */
+        let touchedAt = 0;
+        const touch = () => { touchedAt = performance.now(); };
+        cb.addEventListener('pointerdown', touch, true);
+        cb.addEventListener('pointerup', touch, true);   // долгий недотянутый свайп — тоже касание, не внесение
+        cb.addEventListener('click', e => {
           if (!cb.classList.contains('on') || cb.classList.contains('saving')) return;
+          if (e.detail === 0 || performance.now() - touchedAt > 1500) {
+            if (cb.dataset.slideAct === 'save-smart') saveSmart(cb); else saveExpense(cb);
+            return;
+          }
           cb.classList.remove('hint');
           void cb.offsetWidth;
           cb.classList.add('hint');
