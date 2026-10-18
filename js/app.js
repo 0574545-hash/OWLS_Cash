@@ -917,6 +917,11 @@
     }).then(done, done);
   }
 
+  /* Слова, которые не стоит запоминать: форма собственности, страна, город. */
+  const LEGAL_W = /^(ип|ip|ооо|ooo|зао|zao|оао|пао|pao|llc|ltd|rus|russia|moscow|москва|spb|оплата|перевод|магазин)$/;
+  /* Запоминать стоит только содержательные слова: не «ip», не «ооо», не город. */
+  const goodWord = w => w.length >= 4 && !LEGAL_W.test(w);
+
   /* Куда слово попадёт само, без обучения. */
   function autoCatForWord(w) {
     for (const key of Object.keys(state.data.learned)) {
@@ -1102,7 +1107,7 @@
     const cat = catById(state.smartCat);
     if (!cat || cat.sys) return '';
     if (r.cat && r.cat.id === cat.id) return '';
-    return learnCandidates(r.name, cat.id)[0] || '';
+    return learnCandidates(r.name, cat.id).find(goodWord) || '';
   }
 
   function smartCatLabel(r, catLabel) {
@@ -1131,6 +1136,7 @@
         ${state.smartCat ? `<button type="button" class="btn-ghost wide" data-act="smartcat-auto">Определять самому</button>` : ''}
       </div>
     </div>`;
+    const h = sheetHost.querySelector('.cat-pick .sec-t'); h.tabIndex = -1; h.focus({ preventScroll: true });
   }
   function closeSmartCat() {
     const wrap = sheetHost.querySelector('.sheet-wrap');
@@ -1191,7 +1197,7 @@
         <div class="group-h"><span class="g-day">${esc(g.label)}</span><span class="g-sum">${fmt(g.sum)} ₽</span></div>
         <div class="card flush">${g.items.map(e => {
           const un = isUnsorted(e);
-          return `<div class="row hold${un ? ' unsorted' : ''}" data-id="${e.id}" data-act="row-cat" role="button" tabindex="0" aria-label="${esc(e.name)}, ${fmt(e.amount)} рублей, ${un ? 'без категории' : esc(catName(e.catId))}. Коснитесь, чтобы выбрать категорию, удерживайте, чтобы удалить">
+          return `<div class="row hold${un ? ' unsorted' : ''}" data-id="${e.id}" data-act="row-cat" role="button" tabindex="0" aria-label="${esc(e.name)}, ${fmt(e.amount)} рублей, ${un ? 'без категории' : esc(catName(e.catId))}. Коснитесь, чтобы изменить или удалить запись">
             <span class="${un ? 'qmark' : 'row-ic'}">${svg(un ? 'circle-help' : catIcon(e.catId), 17, 1.6)}</span>
             <span class="row-c"><span class="row-n">${esc(e.name)}</span><span class="row-m">${un
               ? '<span class="fixme">нужна категория</span>'
@@ -1204,7 +1210,7 @@
     return `<section class="screen" data-screen="history">
       <header class="page-h cascade-item"><button type="button" class="back pressable" data-act="go-home" aria-label="Назад">${svg('chevron-left', 18, 1.8)}</button><h1 class="h1">История</h1><span class="page-sub">${fmt(d.monthTotal)} ₽ за ${esc(monthStr)}</span></header>
       ${body}
-      ${d.groups.length ? '<p class="hint center small">Тап по строке меняет категорию, удержание удаляет запись.</p>' : ''}
+      ${d.groups.length ? '<p class="hint center small">Касание строки — правка, удержание — удаление.</p>' : ''}
     </section>`;
   }
 
@@ -1446,11 +1452,13 @@
     const commit = () => {
       saving = false;
       const before = derive().todayTotal;
+      const was = snapData();
       state.data.expenses.unshift(row);
       bumpEdits();
       persist();
       state.amount = ''; state.cat = null; state.comment = ''; state.pad = false;
       rerender();
+      undoToast(`Внесено ${fmt(amount)} ₽`, cat.name, () => undoTo(was, 'Расход отменён'));
       if (from) { flyToDash(from, amount, before); flyToHistory(from, row.catId); }
       else M.once(document.getElementById('card-today'), 'nudge');
     };
@@ -1482,6 +1490,7 @@
     const commit = () => {
       savingSmart = false;
       const before = derive().todayTotal;
+      const was = snapData();
       state.data.expenses.unshift(row);
       if (learnWord) state.data.learned[learnWord] = cat.id;
       bumpEdits();
@@ -1491,6 +1500,7 @@
       sovaForget();
       state.smartCat = null;
       rerender();
+      undoToast(`Внесено ${fmt(row.amount)} ₽`, cat.sys ? 'без категории' : cat.name, () => undoTo(was, 'Расход отменён'));
       if (from) { flyToDash(from, row.amount, before); flyToHistory(from, row.catId); }
       else M.once(document.getElementById('card-today'), 'nudge');
     };
@@ -1508,9 +1518,12 @@
   function removeExpense(id, rowEl) {
     const i = state.data.expenses.findIndex(e => e.id === id);
     if (i < 0) return;
+    const was = snapData();
+    const gone = state.data.expenses[i];
     state.data.expenses.splice(i, 1);
     bumpEdits();
     persist();
+    undoToast('Запись удалена', `${gone.name} · ${fmt(gone.amount)} ₽`, () => undoTo(was, 'Запись возвращена'));
     if (rowEl && !M.reduced()) {
       rowEl.classList.add('removing');
       setTimeout(rerender, 200);
@@ -1847,15 +1860,18 @@
 
   const isUnsorted = e => { const c = catById(e.catId); return !!c && c.sys === 'none'; };
 
-  /* Лист «Категория записи»: соты для выбора плюс предложение запомнить слово. */
+  /* Лист «Запись»: сумма, название, категория; удаление — здесь же, с отменой.
+     Касание строки истории и Enter на ней открывают его, а не удаление. */
   let rowPick = null;
+  let sheetBack = null;   // куда вернуть фокус, когда лист закроется
   function openRowCat(id) {
     const e = state.data.expenses.find(x => x.id === id);
     if (!e) return;
-    rowPick = { id, catId: isUnsorted(e) ? null : e.catId, remember: true };
-    drawRowCat();
+    rowPick = { id, catId: isUnsorted(e) ? null : e.catId, amount: String(e.amount), name: e.name, remember: true };
+    sheetBack = id;
+    drawRowCat(true);
   }
-  function drawRowCat() {
+  function drawRowCat(first) {
     const e = state.data.expenses.find(x => x.id === rowPick.id);
     if (!e) { rowPick = null; return; }
     const cats = orderedCats().filter(c => !c.sys && !c.hidden);
@@ -1863,44 +1879,73 @@
     let i = 0;
     for (const size of honeyRows(cats.length)) { rows.push(cats.slice(i, i + size)); i += size; }
     const target = rowPick.catId ? catById(rowPick.catId) : null;
-    rowPick.word = learnCandidates(e.name, rowPick.catId)[0] || '';
-    sheetHost.innerHTML = `<div class="sheet-wrap">
+    rowPick.word = target && target.id !== e.catId ? (learnCandidates(rowPick.name, rowPick.catId).find(goodWord) || '') : '';
+    const amt = parseInt(rowPick.amount, 10) || 0;
+    sheetHost.innerHTML = `<div class="sheet-wrap${first ? '' : ' still'}">
       <div class="dim" data-act="close-rowcat"></div>
-      <div class="sheet" role="dialog" aria-modal="true" aria-label="Категория записи">
-        <div class="sheet-h"><span class="sec-t">Категория записи</span><button type="button" class="x pressable" data-act="close-rowcat" aria-label="Закрыть">${svg('x', 18, 1.8)}</button></div>
-        <p class="hint">${esc(e.name)} · ${fmt(e.amount)} ₽</p>
-        <div class="honey">${rows.map(r => `<div class="honey-row">${r.map(c =>
-          `<button type="button" class="cat${rowPick.catId === c.id ? ' on' : ''}" data-act="rowcat-pick" data-id="${c.id}" title="${esc(c.name)}" aria-label="${esc(c.name)}" aria-pressed="${rowPick.catId === c.id}">${svg(c.icon, 26, 1.6)}</button>`
-        ).join('')}</div>`).join('')}</div>
-        <div class="picked-name">${target ? esc(target.name) : 'категория не выбрана'}</div>
+      <div class="sheet ed-sheet" role="dialog" aria-modal="true" aria-labelledby="ed-title">
+        <div class="sheet-h"><span class="sec-t" id="ed-title" tabindex="-1">Запись</span><button type="button" class="x pressable" data-act="close-rowcat" aria-label="Закрыть">${svg('x', 18, 1.8)}</button></div>
+        <label class="ed-row"><span class="lbl">Сумма</span>
+          <span class="ed-amt"><input id="ed-amount" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="${MAX_DIGITS}" value="${esc(rowPick.amount)}" autocomplete="off" aria-label="Сумма, рублей"><span class="a-rub">₽</span></span></label>
+        <label class="ed-row"><span class="lbl">Наименование</span>
+          <input id="ed-name" class="input" type="text" maxlength="60" value="${esc(rowPick.name)}" autocomplete="off" autocapitalize="sentences" enterkeyhint="done"></label>
+        <div class="ed-row"><span class="lbl">Категория</span>
+          <div class="honey">${rows.map(r => `<div class="honey-row">${r.map(c => `<div class="cat-w${rowPick.catId === c.id ? ' on' : ''}"><button type="button" class="cat${rowPick.catId === c.id ? ' on' : ''}" data-act="rowcat-pick" data-id="${c.id}" aria-label="${esc(c.name)}" aria-pressed="${rowPick.catId === c.id}">${svg(c.icon, 22, 1.6)}</button><span class="cat-cap" aria-hidden="true">${esc(shortName(c.name))}</span></div>`).join('')}</div>`).join('')}</div></div>
         ${rowPick.word ? `<button type="button" class="remember${rowPick.remember ? ' on' : ''}" data-act="rowcat-remember" role="switch" aria-checked="${rowPick.remember}">
           <span class="r-ic">${svg('sparkles', 18, 1.7)}</span>
-          <span class="t">Запомнить «${esc(rowPick.word)}»${target ? ' как ' + esc(target.name) : ''}<i>В следующий раз подставится сама</i></span>
+          <span class="t">Запомнить «${esc(rowPick.word)}» как ${esc(target.name)}<i>В следующий раз подставится сама</i></span>
           <span class="switch${rowPick.remember ? ' on' : ''}"><i></i></span>
         </button>` : ''}
-        <button type="button" class="save" data-act="rowcat-save" aria-disabled="${!rowPick.catId}">Сохранить</button>
+        <div class="ed-btns">
+          <button type="button" class="save" data-act="rowcat-save" aria-disabled="${!(amt > 0 && rowPick.catId)}">Сохранить</button>
+          <button type="button" class="ed-del" data-act="rowcat-delete">${svg('trash-2', 16, 1.8)}Удалить запись</button>
+        </div>
       </div>
     </div>`;
+    const ea = sheetHost.querySelector('#ed-amount'), en = sheetHost.querySelector('#ed-name');
+    const sync = () => {
+      const ok = (parseInt(rowPick.amount, 10) || 0) > 0 && !!rowPick.catId;
+      sheetHost.querySelector('[data-act="rowcat-save"]').setAttribute('aria-disabled', String(!ok));
+    };
+    ea.addEventListener('input', () => { ea.value = ea.value.replace(/\D/g, '').replace(/^0+(?=\d)/, ''); rowPick.amount = ea.value; sync(); });
+    en.addEventListener('input', () => { rowPick.name = en.value; });
+    [ea, en].forEach(x => x.addEventListener('keydown', ev => { if (ev.key === 'Enter') x.blur(); }));
+    if (first) sheetHost.querySelector('#ed-title').focus({ preventScroll: true });
   }
   function closeRowCat() {
     rowPick = null;
     const wrap = sheetHost.querySelector('.sheet-wrap');
+    const back = sheetBack; sheetBack = null;
+    const refocus = () => { const r = back && screens.querySelector(`.row[data-id="${back}"]`); if (r) r.focus({ preventScroll: true }); };
     if (!wrap) return;
-    if (M.reduced()) { sheetHost.innerHTML = ''; return; }
+    if (M.reduced()) { sheetHost.innerHTML = ''; refocus(); return; }
     wrap.classList.add('closing');
-    setTimeout(() => { sheetHost.innerHTML = ''; }, 210);
+    setTimeout(() => { sheetHost.innerHTML = ''; refocus(); }, 210);
   }
   function saveRowCat() {
     if (!rowPick || !rowPick.catId) return;
+    const amount = parseInt(rowPick.amount, 10) || 0;
+    if (!(amount > 0)) return;
     const e = state.data.expenses.find(x => x.id === rowPick.id);
     if (e) {
+      const cat = catById(rowPick.catId);
       e.catId = rowPick.catId;
+      e.amount = amount;
+      e.name = rowPick.name.trim() || (cat ? cat.name : e.name);
       if (rowPick.remember && rowPick.word) state.data.learned[rowPick.word] = rowPick.catId;
       bumpEdits();
       persist();
+      haptic('success');
     }
     closeRowCat();
     rerender();
+  }
+  function deleteRowCat() {
+    if (!rowPick) return;
+    const id = rowPick.id;
+    haptic('heavy');
+    closeRowCat();
+    removeExpense(id, screens.querySelector(`.row[data-id="${id}"]`));
   }
 
   function closeEditor() {
@@ -1971,8 +2016,6 @@
      переводы себе, уже внесённое). Вносится только отмеченное. */
   const Imp = window.OwlsImport;
   let imp = null;   // { busy, name, kind, bank, ops, err, thumb, pick }
-  /* Слова, которые не стоит запоминать: форма собственности, страна, город. */
-  const LEGAL_W = /^(ип|ip|ооо|ooo|зао|zao|оао|пао|pao|llc|ltd|rus|russia|moscow|москва|spb|оплата|перевод|магазин)$/;
   const KIND_T = { pdf: 'PDF-выписка', xlsx: 'таблица Excel', csv: 'таблица CSV', text: 'текст', image: 'скриншот' };
 
   function pickImportFile() {
@@ -2117,7 +2160,8 @@
     };
     const src = [imp.bank, KIND_T[imp.kind]].filter(Boolean).join(' · ');
     const n = imp.ops.length;
-    return `<p class="hint">${esc(cap(src))}: ${n} ${plural(n, 'операция', 'операции', 'операций')}, расходов ${live.length}.</p>
+    const loose = chosen.filter(o => !o.catId || !catById(o.catId)).length;
+    return `<p class="hint">${esc(cap(src))}: ${n} ${plural(n, 'операция', 'операции', 'операций')}, к внесению ${chosen.length}.</p>
       ${days.map(g => `<div class="imp-group" data-k="d${g.d}">
         <div class="group-h"><span class="g-day">${esc(dayLabel(g.d))}</span><span class="g-sum">${fmt(g.ops.filter(o => o.on).reduce((t, o) => t + o.amount, 0))} ₽</span></div>
         <div class="card flush">${g.ops.map(row).join('')}</div></div>`).join('')}
@@ -2125,7 +2169,9 @@
         <div class="group-h"><span class="g-day soft">Не внесу</span><span class="g-sum">${rest.length}</span></div>
         <div class="card flush">${rest.map(row).join('')}</div></div>` : ''}
       <div class="imp-foot"><button type="button" class="imp-go" data-act="imp-save" aria-disabled="${!chosen.length}">${chosen.length
-        ? `Внести ${chosen.length} ${plural(chosen.length, 'расход', 'расхода', 'расходов')} <small>· ${fmt(total)} ₽</small>`
+        ? (loose
+          ? `Внести ${chosen.length} <small>· ${fmt(total)} ₽</small><span class="imp-warn">${loose} без статьи</span>`
+          : `Внести ${chosen.length} ${plural(chosen.length, 'расход', 'расхода', 'расходов')} <small>· ${fmt(total)} ₽</small>`)
         : 'Ничего не отмечено'}</button></div>`;
   }
 
@@ -2170,6 +2216,8 @@
       </div>
     </div>`;
     const sh = sheetHost.querySelector('.imp-sheet');
+    /* Лист открылся впервые — фокус в него: VoiceOver и клавиатура начинают с заголовка. */
+    if (!was || was.dataset.view !== view) { const h = sh.querySelector('.sec-t'); h.tabIndex = -1; h.focus({ preventScroll: true }); }
     if (keep) { sh.scrollTop = y; morphApply(snap, sh); }
     else if (view === 'review' && imp.backY) { sh.scrollTop = imp.backY; imp.backY = 0; }
   }
@@ -2201,13 +2249,14 @@
     const chosen = imp.ops.filter(o => o.on);
     if (!chosen.length) return;
     const none = chosen.some(o => !o.catId || !catById(o.catId)) ? noneCat(true) : null;
+    const was = snapData();
     const before = derive().todayTotal;
     const today = dayKey(new Date());
     let todayAdd = 0, total = 0;
     chosen.forEach(o => {
       const catId = o.catId && catById(o.catId) ? o.catId : none.id;
       state.data.expenses.push({ id: Store.uid(), ts: `${o.d}T${o.t || '12:00'}:00`, amount: o.amount, catId, name: o.name, src: 'import' });
-      if (o.manual && o.catId) { const w = learnCandidates(o.name, o.catId).find(x => x.length >= 4 && !LEGAL_W.test(x)); if (w) state.data.learned[w] = o.catId; }
+      if (o.manual && o.catId) { const w = learnCandidates(o.name, o.catId).find(goodWord); if (w) state.data.learned[w] = o.catId; }
       if (o.d === today) todayAdd += o.amount;
       total += o.amount;
     });
@@ -2219,19 +2268,52 @@
     if (state.tab !== 'today') { state.tab = 'today'; show('today', -1); } else rerender();
     if (todayAdd) flyToDash(null, todayAdd, before);
     else M.once(document.getElementById('card-today'), 'nudge');
-    importToast(chosen.length, total, from);
+    const loose = chosen.filter(o => !o.catId || !catById(o.catId)).length;
+    undoToast(`Внесено ${chosen.length} ${plural(chosen.length, 'расход', 'расхода', 'расходов')}`,
+      `${fmt(total)} ₽` + (loose ? ` · ${loose} без статьи` : (from ? ` · ${from}` : '')),
+      () => undoTo(was, 'Загрузка отменена'));
   }
 
-  function importToast(n, total, from) {
-    const old = document.querySelector('.imp-toast');
-    if (old) old.remove();
+  /* Плашка «Отменить»: после внесения, удаления и загрузки выписки. 6 секунд,
+     полоска внизу показывает, сколько осталось. role=status — VoiceOver
+     прочитает её сам. Новая плашка заменяет прежнюю: отменить можно последнее. */
+  const UNDO_MS = 6000;
+  let undoNow = null;
+  function undoToast(title, sub, undo) {
+    if (undoNow) undoNow.close(true);
     const t = document.createElement('div');
-    t.className = 'imp-toast';
+    t.className = 'u-toast';
     t.setAttribute('role', 'status');
-    t.innerHTML = `<span class="it-ic">${svg('check', 18, 2.4)}</span><span class="it-t"><b>Внесено ${n} ${plural(n, 'расход', 'расхода', 'расходов')}</b>${from ? `<span>${esc(from)}</span>` : ''}</span><em>${fmt(total)} ₽</em>`;
+    t.innerHTML = `<span class="u-ic">${svg('check', 17, 2.6)}</span>
+      <span class="u-t"><b>${esc(title)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</span>
+      ${undo ? '<button type="button" class="u-undo">Отменить</button>' : ''}<i class="u-bar"></i>`;
     document.body.appendChild(t);
-    setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 320); }, 2800);
+    const bar = t.querySelector('.u-bar');
+    if (!M.reduced()) bar.animate([{ transform: 'scaleX(1)' }, { transform: 'scaleX(0)' }], { duration: UNDO_MS, easing: 'linear', fill: 'forwards' });
+    const me = {
+      close(fast) {
+        clearTimeout(timer);
+        if (undoNow === me) undoNow = null;
+        if (fast || M.reduced()) { t.remove(); return; }
+        t.classList.add('out');
+        setTimeout(() => t.remove(), 300);
+      }
+    };
+    const timer = setTimeout(() => me.close(), UNDO_MS);
+    const btn = t.querySelector('.u-undo');
+    if (btn) btn.addEventListener('click', () => { me.close(); haptic('medium'); undo(); });
+    undoNow = me;
   }
+  /* Вернуть данные к снимку до действия: записи и выученные слова. */
+  function undoTo(before, what) {
+    state.data.expenses = before.expenses;
+    state.data.learned = before.learned;
+    bumpEdits();
+    persist();
+    rerender();
+    undoToast(what, '', null);
+  }
+  const snapData = () => ({ expenses: state.data.expenses.slice(), learned: Object.assign({}, state.data.learned) });
 
   /* ---------- события ---------- */
   screens.addEventListener('click', e => {
@@ -2261,7 +2343,7 @@
   screens.addEventListener('keydown', e => {
     if (e.key === 'Enter' || e.key === ' ') {
       const row = e.target.closest('.row.hold');
-      if (row) { e.preventDefault(); if (confirm('Удалить запись?')) removeExpense(row.dataset.id, row); }
+      if (row) { e.preventDefault(); openRowCat(row.dataset.id); }
     }
   });
   overlay.addEventListener('click', e => {
@@ -2327,7 +2409,8 @@
         break;
       }
       case 'smartcat-auto': state.smartCat = null; closeSmartCat(); rerender(); break;
-      case 'rowcat-pick': rowPick.catId = (rowPick.catId === act.dataset.id) ? null : act.dataset.id; drawRowCat(); break;
+      case 'rowcat-pick': haptic('selection'); rowPick.catId = (rowPick.catId === act.dataset.id) ? null : act.dataset.id; drawRowCat(); break;
+      case 'rowcat-delete': deleteRowCat(); break;
       case 'rowcat-remember': rowPick.remember = !rowPick.remember; drawRowCat(); break;
       case 'rowcat-save': saveRowCat(); break;
       case 'do-restore': { const obj = pendingRestore; closeConfirm(); if (obj) { backupRestore(obj); closeSettings(); } break; }
