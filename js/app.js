@@ -1619,7 +1619,7 @@
       <button type="button" class="add-cat pressable" data-act="new-cat">${svg('plus', 17, 1.9)}Добавить категорию</button>
       <div class="card pad data-card" data-k="input-card">
         <div class="sec-t">Ввод расхода</div>
-        <button type="button" class="set-row" data-act="toggle-smart" role="switch" aria-checked="${state.data.smart}">
+        <button type="button" class="set-row" data-k="smart" data-act="toggle-smart" role="switch" aria-checked="${state.data.smart}">
           <span class="t"><b>Умный ввод</b><span>Одна строка вместо трёх полей. «1000 кафе с семьёй» разберётся само.</span></span>
           <span class="switch${state.data.smart ? ' on' : ''}"><i></i></span>
         </button>
@@ -1678,6 +1678,16 @@
       persist();
     } });
   }
+  /* Переключатель сначала доезжает, потом зависимые строки плавно складываются
+     или раскрываются (morph в openSettings). Сразу перерисовать — ручка прыгнет. */
+  function flipSwitch(row) {
+    const sw = row.querySelector('.switch');
+    const on = sw && !sw.classList.contains('on');
+    if (sw) { sw.classList.toggle('on', on); row.setAttribute('aria-checked', String(on)); }
+    haptic('selection');
+    setTimeout(() => { if (state.settings) openSettings(); }, M.reduced() ? 0 : 200);
+  }
+
   /* Настройки уходят так же, как пришли: экран под ними уже перерисован. */
   function closeSettings() {
     state.settings = false;
@@ -2244,8 +2254,8 @@
       case 'sample': loadSample(); break;
       case 'bk-save': backupSave(act); break;
       case 'bk-restore': pickBackupFile(); break;
-      case 'toggle-smart': state.data.smart = !state.data.smart; state.smartText = ''; sovaForget(); state.pad = false; persist(); openSettings(); break;
-      case 'toggle-sova': state.data.sova = !state.data.sova; sovaForget(); persist(); openSettings(); break;
+      case 'toggle-smart': state.data.smart = !state.data.smart; state.smartText = ''; sovaForget(); state.pad = false; persist(); flipSwitch(act); break;
+      case 'toggle-sova': state.data.sova = !state.data.sova; sovaForget(); persist(); flipSwitch(act); break;
       case 'learned-list': openLearned(); break;
       case 'del-cat': {
         const used = +act.dataset.used;
