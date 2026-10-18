@@ -2073,11 +2073,13 @@
       const i = imp.ops.indexOf(o);
       const c = o.catId && catById(o.catId);
       const off = o.skip || o.dup;
-      const tag = off
-        ? `<span class="row-cat">${esc(o.dup ? 'уже внесено' : o.skip)}</span>`
-        : `<button type="button" class="imp-tag${c ? '' : ' ask'}" data-act="imp-cat" data-i="${i}">${c ? esc(c.name) : 'Выбрать статью'}${svg('chevron-right', 12, 2.2)}</button>`;
+      /* «Не внесу» — только предложение: отметили строку — появляется выбор
+         статьи, и она вносится наравне с остальными. */
+      const why = off ? `<span class="row-cat">${esc(o.dup ? 'уже внесено' : o.skip)}</span>` : '';
+      const tag = off && !o.on ? why
+        : `<button type="button" class="imp-tag${c ? '' : ' ask'}" data-act="imp-cat" data-i="${i}">${c ? esc(c.name) : 'Выбрать статью'}${svg('chevron-right', 12, 2.2)}</button>${off ? `<i class="dot"></i>${why}` : ''}`;
       const ic = c ? c.icon : o.transfer ? 'users' : o.sign > 0 ? 'arrow-down-left' : o.skip === 'перевод на свой счёт' ? 'trending-up' : 'circle-help';
-      return `<div class="imp-row${off ? ' dimmed' : ''}" data-k="o${i}">
+      return `<div class="imp-row${off && !o.on ? ' dimmed' : ''}" data-k="o${i}">
           <button type="button" class="imp-ck${o.on ? ' on' : ''}" data-act="imp-on" data-i="${i}" role="checkbox" aria-checked="${o.on}" aria-label="Внести: ${esc(o.name)}">${svg('check', 14, 2.6)}</button>
           <span class="row-ic">${svg(ic, 17, 1.6)}</span>
           <span class="row-c"><span class="row-n">${esc(o.name)}</span><span class="row-m">${tag}${o.t ? `<i class="dot"></i><span class="row-t">${o.t}</span>` : ''}</span></span>
@@ -2158,7 +2160,7 @@
     const o = imp.ops[imp.pick];
     const same = n => n.toLowerCase().replace(/ё/g, 'е');
     imp.ops.forEach(x => {
-      if (x === o || (!x.skip && !x.dup && !x.manual && same(x.name) === same(o.name))) { x.catId = id; x.manual = true; }
+      if (x === o || ((x.on || (!x.skip && !x.dup)) && !x.manual && same(x.name) === same(o.name))) { x.catId = id; x.manual = true; }
     });
     haptic('selection');
     sheetHost.querySelectorAll('.imp-sheet .cat').forEach(b => b.classList.toggle('on', b.dataset.id === id));
@@ -2272,7 +2274,16 @@
       case 'close-learned': closeLearned(); break;
       case 'close-smartcat': closeSmartCat(); break;
       case 'imp-close': closeImport(); break;
-      case 'imp-on': { const o = imp && imp.ops[+act.dataset.i]; if (o) { o.on = !o.on; haptic('selection'); drawImport(); } break; }
+      case 'imp-on': {
+        const o = imp && imp.ops[+act.dataset.i];
+        if (!o) break;
+        o.on = !o.on;
+        /* Отметили строку из «Не внесу» — подберём статью, как остальным. */
+        if (o.on && !o.catId && !o.guessed) { const c = o.transfer ? null : guessImportCat(o); o.catId = c ? c.id : null; o.guessed = true; }
+        haptic('selection');
+        drawImport();
+        break;
+      }
       case 'imp-cat': if (imp) { imp.pick = +act.dataset.i; imp.backY = (sheetHost.querySelector('.imp-sheet') || {}).scrollTop || 0; drawImport(); } break;
       case 'imp-pick': if (imp && imp.pick != null) pickImportCat(act.dataset.id); break;
       case 'imp-back': if (imp) { imp.pick = null; drawImport(); } break;
